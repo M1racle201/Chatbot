@@ -1,9 +1,11 @@
 ﻿"""VibeChatbot 入口：命令模式 + 持续对话循环 + 自主任务模式。"""
 
+from agent import Agent
 from chat import Chat
 from history import HISTORY_FILE, History
 
 chat_client = Chat()
+agent_client = Agent(chat_client)
 
 
 def show_help() -> None:
@@ -32,7 +34,8 @@ def agent_loop() -> None:
         if task in ("/clear_memory", "/clear_memmory"):
             chat_client.clear_memory()
             continue
-        chat_client.agent_chat(task)
+        agent_client.run(task)
+
 
 def chat_loop() -> None:
     """聊天循环：持续对话，输入 /exit 退出对话。"""
@@ -65,7 +68,7 @@ def main() -> None:
             agent_loop()
         elif command == "/clear_history":
             chat_client.history.clear()
-        elif command in ("/clear_memory"):
+        elif command in ("/clear_memory", "/clear_memmory"):
             chat_client.clear_memory()
         elif command == "/exit":
             print("再见！")
@@ -76,4 +79,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
