@@ -21,6 +21,7 @@ KEEP_RECENT_ROUNDS = 20
 MAX_AGENT_STEPS = 10
 MAX_RETRIES = 3
 RETRY_DELAY = 5
+AGENT_MAX_MESSAGES = 60
 TASK_DIR = "TASK"
 
 
@@ -30,6 +31,7 @@ class Chat:
     messages 结构：[system 提示词] + [{"role": "user", "content": 用户输入}] ...
     聊天记录保存在 CHAT 文件夹，任务记录保存在 TASK 文件夹。
     对话轮次超过 MAX_ROUNDS 时，总结全部对话并只保留最近 KEEP_RECENT_ROUNDS 轮。
+    agent 任务消息超过 AGENT_MAX_MESSAGES 条时，总结进度并保留最近完整消息。
     请求遇 429/5xx/超时会自动等待重试。
     """
 
@@ -43,6 +45,7 @@ class Chat:
         keep_recent_rounds: int = KEEP_RECENT_ROUNDS,
         max_retries: int = MAX_RETRIES,
         retry_delay: int = RETRY_DELAY,
+        agent_max_messages: int = AGENT_MAX_MESSAGES,
     ):
         self.api_key = api_key
         self.base_url = base_url
@@ -54,6 +57,7 @@ class Chat:
         self.keep_recent_rounds = keep_recent_rounds
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.agent_max_messages = agent_max_messages
         # 首次打开终端聊天时加载历史；history.json 有内容则导入
         loaded = self.history.load()
         self.loaded_count = len(loaded)
@@ -104,14 +108,18 @@ class Chat:
                     raise
                 self._wait_and_report(exc, attempt)
 
-    def _summarize(self) -> str:
-        """调用模型简略总结全部对话。"""
+    def _summarize_messages(self, messages: list) -> str:
+        """调用模型简略总结给定消息列表。"""
         response = self._create_with_retry(
             model=self.model,
-            messages=self.messages
-            + [{"role": "user", "content": "请用简洁的语言总结以上全部对话内容。"}],
+            messages=messages
+            + [{"role": "user", "content": "请用简洁的语言总结以上内容。"}],
         )
         return response.choices[0].message.content or ""
+
+    def _summarize(self) -> str:
+        """调用模型简略总结全部对话。"""
+        return self._summarize_messages(self.messages)
 
     def _check_length(self) -> bool:
         """对话轮次超过上限时总结并压缩历史；返回是否发生了压缩。"""
@@ -125,6 +133,23 @@ class Chat:
             print(f"对话轮次超过 {self.max_rounds}，已总结并保留最近 {self.keep_recent_rounds} 轮")
             return True
         return False
+
+    def _compress_agent_messages(self, agent_messages: list) -> list:
+        """agent 上下文超长时：总结进度，保留最近完整消息（避免截断 tool 关联）。"""
+        summary = self._summarize_messages(agent_messages)
+        keep = agent_messages[-(self.keep_recent_rounds * 2):]
+        # 保留段必须从 assistant 消息开始，防止 tool 消息孤立
+        start = next(
+            (index for index, message in enumerate(keep)
+             if message.get("role") == "assistant"),
+            0,
+        )
+        keep = keep[start:]
+        print(f"任务上下文超过 {self.agent_max_messages} 条，已总结进度并保留最近 {len(keep)} 条")
+        return [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "system", "content": "任务进度总结：" + summary},
+        ] + keep
 
     def chat(self, user_input: str) -> None:
         """基础聊天：流式打印回复到终端，不直接返回整段文字。"""
@@ -163,6 +188,9 @@ class Chat:
         agent_messages = self.messages + [{"role": "user", "content": task}]
         print("任务已接收，开始执行...")
         for _ in range(MAX_AGENT_STEPS):
+            # 上下文超长时先总结压缩（保留完整消息，不断开 tool 关联）
+            if len(agent_messages) > self.agent_max_messages:
+                agent_messages = self._compress_agent_messages(agent_messages)
             response = self._create_with_retry(
                 model=self.model,
                 messages=agent_messages,

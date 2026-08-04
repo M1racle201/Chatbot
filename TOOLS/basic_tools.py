@@ -16,6 +16,12 @@ SEPARATORS = ("\n", "!", "！", ".", "。")
 # 向量库单例（首次使用时自动建库）
 _store = None
 
+# agent 可写文件的白名单目录
+OUTPUT_DIR = "OUTPUT"
+
+# 合法文件名：不含路径分隔符、点号开头、路径穿越等
+_SAFE_FILENAME = re.compile(r"^[\w\u4e00-\u9fff.\-]+$")
+
 
 def get_store() -> VectorStore:
     """获取向量库实例（惰性创建）。"""
@@ -154,6 +160,18 @@ def query_documents(query: str, top_k: int = 5) -> dict:
     }
 
 
+def save_file(filename: str, content: str) -> dict:
+    """生成文件到 OUTPUT 白名单目录（仅文件名，禁止路径穿越）。"""
+    filename = filename.strip()
+    if not filename or filename.startswith(".") or not _SAFE_FILENAME.match(filename):
+        return {"error": f"非法文件名: {filename}（仅允许文件名，不含路径）"}
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    path = os.path.join(OUTPUT_DIR, filename)
+    with open(path, "w", encoding="utf-8") as file:
+        file.write(content)
+    return {"filename": filename, "path": path, "chars": len(content)}
+
+
 TOOLS = [
     {
         "name": "load",
@@ -209,4 +227,21 @@ TOOLS = [
         },
         "function": query_documents,
     },
+    {
+        "name": "save_file",
+        "description": (
+            "生成文本文件并保存到 OUTPUT 目录（白名单），"
+            "filename 只允许文件名（不含路径）；用于保存报告、总结等输出内容"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filename": {"type": "string", "description": "文件名，如 报告.md"},
+                "content": {"type": "string", "description": "要写入的文件内容"},
+            },
+            "required": ["filename", "content"],
+        },
+        "function": save_file,
+    },
 ]
+
