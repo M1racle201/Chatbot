@@ -15,7 +15,7 @@ class Agent:
     """基于 Chat 客户端的自主任务执行器。
 
     使用 function calling 循环：模型决定调用哪个工具 → 执行 → 结果回传，
-    直到给出最终汇报；任务上下文超长时自动总结并保留最近完整消息。
+    直到给出最终汇报；工具调用过程不输出，仅记录在 TASK JSON 存档中。
     """
 
     def __init__(self, chat, agent_max_messages: int = AGENT_MAX_MESSAGES):
@@ -25,7 +25,6 @@ class Agent:
     def run(self, task: str) -> None:
         """执行任务：工具循环直到最终汇报，并把任务记录存入 TASK 文件夹。"""
         agent_messages = self.chat.messages + [{"role": "user", "content": task}]
-        print("任务已接收，开始执行...")
         for _ in range(MAX_AGENT_STEPS):
             # 上下文超长时先总结压缩（保留完整消息，不断开 tool 关联）
             if len(agent_messages) > self.agent_max_messages:
@@ -45,9 +44,7 @@ class Agent:
                         arguments = json.loads(tool_call["function"]["arguments"] or "{}")
                     except json.JSONDecodeError:
                         arguments = {}
-                    print(f"  -> 调用工具 {name}: {arguments}")
                     result = execute_tool(name, arguments)
-                    print(f"    工具结果: {result}")
                     agent_messages.append(
                         {
                             "role": "tool",
