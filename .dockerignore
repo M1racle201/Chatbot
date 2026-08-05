@@ -1,0 +1,17 @@
+﻿# 敏感文件: API 密钥不进入镜像,运行时用 --env-file 传入
+.env
+
+# 运行数据: 挂载卷持久化,不需要打包进镜像
+CHAT
+TASK
+OUTPUT
+VECTOR_DB
+.hf_cache
+
+# Python / Git / 缓存
+.git
+__pycache__
+*.pyc
+
+# 历史记录等 JSON 运行时数据
+*.json

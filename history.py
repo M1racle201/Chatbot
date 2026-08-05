@@ -1,4 +1,4 @@
-﻿"""对话历史持久化：将用户与 LLM 的对话以 JSON 格式读写。"""
+"""对话历史持久化：将用户与 LLM 的对话以 JSON 格式读写。"""
 
 import json
 import os
@@ -35,3 +35,33 @@ class History:
         """清空历史记录。"""
         self.save([])
         print("历史记录已清空")
+
+    def compress(
+        self,
+        messages: list,
+        summary: str,
+        keep_recent_rounds: int = 20,
+    ) -> list:
+        """对话轮次超限时压缩历史：保留最近的对话轮数，旧对话总结为 system 消息。
+
+        messages: 完整消息列表
+        summary: 模型对全部对话的总结文本
+        keep_recent_rounds: 保留的最近对话轮数（每轮 = user + assistant）
+        返回压缩后的消息列表（最开始的 system 提示词保留）。
+        """
+        # 最开始的 system 提示词；历史中可能混有旧的总结 system，一并剔除
+        original_system = (
+            messages[0]
+            if messages and messages[0].get("role") == "system"
+            else None
+        )
+        # 只保留最近的 keep_recent_rounds 轮对话（每轮 = user + assistant 两条）
+        recent = [
+            m for m in messages if m.get("role") != "system"
+        ][-(keep_recent_rounds * 2):]
+        result = []
+        if original_system:
+            result.append(original_system)
+        if summary.strip():
+            result.append({"role": "system", "content": "对话总结：" + summary})
+        return result + recent

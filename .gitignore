@@ -1,4 +1,20 @@
+﻿# 敏感文件: API 密钥不提交
 .env
-__pycache__/
-prompt/*
+
+# 运行时数据目录(挂载卷/本地数据,不入库)
+CHAT/
+TASK/
+OUTPUT/
+VECTOR_DB/
+.hf_cache/
+
+# 历史记录与任务存档 JSON
 *.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 系统提示词(本地内容,不提交)
+prompt/*
