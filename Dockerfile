@@ -2,9 +2,9 @@
 # 构建:
 #   docker build -t vibechatbot .
 #
-# 运行终端聊天 (交互式):
-#   docker run -it --rm --env-file .env -v vibe_db:/app/data/VECTOR_DB \
-#     vibechatbot
+# 运行终端聊天 (交互式): 数据统一持久化在 vibe_data 卷,`--rm` 也不会丢数据
+#   docker run -it --rm --env-file .env -v vibe_data:/app/data \
+#     -v vibe_model:/app/.hf_cache vibechatbot
 #
 # 数据卷: 聊天记录 / 任务记录 / 流水线 / 输出 / 向量库 统一挂到 /app/data 下
 # ========================================================
