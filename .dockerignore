@@ -2,11 +2,12 @@
 .env
 
 # 运行数据: 挂载卷持久化,不需要打包进镜像
-CHAT
-TASK
-OUTPUT
-VECTOR_DB
+data
 .hf_cache
+
+# Node / Ink UI (Docker 只跑 CLI,不打包 UI 依赖)
+ui/node_modules
+ui/.build
 
 # Python / Git / 缓存
 .git
