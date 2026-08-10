@@ -4,8 +4,8 @@ import io
 import json
 import unittest
 
-from agents.base import AgentMessage
-from ui.bridge import Bridge
+from vibechatbot.agents.base import AgentMessage
+from vibechatbot.bridge import Bridge
 
 
 class FakeHistory:

@@ -9,9 +9,10 @@ import json
 import os
 import re
 
-from agents.base import AgentMessage, BaseAgent
+from vibechatbot import config
+from vibechatbot.agents.base import AgentMessage, BaseAgent
 
-DEFAULT_VERIFIER_PROMPT_FILE = os.path.join("prompt", "verifier")
+DEFAULT_VERIFIER_PROMPT_FILE = os.path.join(config.PROMPT_DIR, "verifier")
 
 DEFAULT_VERIFIER_PROMPT = """你是结论核查器。核查执行结果是否合格。
 

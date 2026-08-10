@@ -3,8 +3,8 @@
 import asyncio
 import unittest
 
-from agents.base import AgentMessage
-from agents.rewriter import RewriterAgent
+from vibechatbot.agents.base import AgentMessage
+from vibechatbot.agents.rewriter import RewriterAgent
 
 
 class FakeLLM:

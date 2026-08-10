@@ -16,7 +16,8 @@ import inspect
 import json
 import os
 
-from agents.base import AgentMessage, BaseAgent
+from vibechatbot import config
+from vibechatbot.agents.base import AgentMessage, BaseAgent
 
 MAX_EXECUTOR_STEPS = 10
 CONVERGENCE_ROUNDS = 2  # 连续 N 轮输出相似视为收敛
@@ -25,7 +26,7 @@ MAX_EXECUTOR_MESSAGES = 60
 KEEP_RECENT_MESSAGES = 40
 MAX_EVIDENCE_ITEMS = 3  # 传给核查器的依据片段上限
 MAX_EVIDENCE_CHARS = 500  # 每段依据片段截断长度
-DEFAULT_EXECUTOR_PROMPT_FILE = os.path.join("prompt", "executor")
+DEFAULT_EXECUTOR_PROMPT_FILE = os.path.join(config.PROMPT_DIR, "executor")
 
 DEFAULT_EXECUTOR_PROMPT = """你是主题执行器,负责基于向量知识库与工具完成用户任务。
 

@@ -3,8 +3,8 @@
 import asyncio
 import unittest
 
-from agents.base import AgentMessage
-from agents.verifier import VerifierAgent
+from vibechatbot.agents.base import AgentMessage
+from vibechatbot.agents.verifier import VerifierAgent
 
 
 class JsonLLM:

@@ -4,8 +4,8 @@ import asyncio
 import json
 import unittest
 
-from agents.base import AgentMessage
-from agents.executor import ExecutorAgent
+from vibechatbot.agents.base import AgentMessage
+from vibechatbot.agents.executor import ExecutorAgent
 
 
 class FakeMessage:

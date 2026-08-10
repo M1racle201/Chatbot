@@ -8,9 +8,10 @@ llm 为可调用对象:接收 messages 列表,返回回复文本。
 import inspect
 import os
 
-from agents.base import AgentMessage, BaseAgent
+from vibechatbot import config
+from vibechatbot.agents.base import AgentMessage, BaseAgent
 
-DEFAULT_REWRITE_PROMPT_FILE = os.path.join("prompt", "rewriter")
+DEFAULT_REWRITE_PROMPT_FILE = os.path.join(config.PROMPT_DIR, "rewriter")
 
 DEFAULT_REWRITE_PROMPT = """你是表达复写器。任务:把用户的输入复写为清晰、完整、适合语义检索的表述。
 

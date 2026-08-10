@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime
 
-from agents.base import AgentMessage, BaseAgent
+from vibechatbot.agents.base import AgentMessage, BaseAgent
 
 
 class Pipeline:
@@ -81,3 +81,18 @@ class Pipeline:
                 indent=2,
             )
         return filename
+
+
+# 简单工具任务快速通道：不涉及知识库推理，直接由执行器完成，跳过复写/核查
+_SIMPLE_TOOL_KEYWORDS = (
+    "读取", "读文件", "保存", "生成", "写入", "输出",
+    "load", "save_file", "add_documents", "入库",
+)
+
+
+def is_simple_tool_task(task: str) -> bool:
+    """判断任务是否为无需检索/核查的简单工具调用（快速通道）。
+
+    启发式：命中任意简单工具关键词即判定为 True。关键词可在此处调整。
+    """
+    return any(keyword in task for keyword in _SIMPLE_TOOL_KEYWORDS)

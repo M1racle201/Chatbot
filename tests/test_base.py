@@ -3,7 +3,7 @@
 import asyncio
 import unittest
 
-from agents.base import AgentMessage, BaseAgent
+from vibechatbot.agents.base import AgentMessage, BaseAgent
 
 
 class FakeAgent(BaseAgent):

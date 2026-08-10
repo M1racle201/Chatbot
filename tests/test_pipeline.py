@@ -6,8 +6,8 @@ import os
 import tempfile
 import unittest
 
-from agents.base import AgentMessage, BaseAgent
-from agents.pipeline import Pipeline
+from vibechatbot.agents.base import AgentMessage, BaseAgent
+from vibechatbot.agents.pipeline import Pipeline, is_simple_tool_task
 
 
 class EchoAgent(BaseAgent):
@@ -269,3 +269,13 @@ class TestPipeline(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestIsSimpleToolTask(unittest.TestCase):
+    def test_simple_tool_keywords_return_true(self):
+        for task in ("读取 C:/a.pdf 并保存", "生成报告并输出到文件", "把 D:/x.docx 入库"):
+            with self.subTest(task=task):
+                self.assertTrue(is_simple_tool_task(task))
+
+    def test_knowledge_reasoning_returns_false(self):
+        self.assertFalse(is_simple_tool_task("基于知识库回答深海采矿的影响"))
