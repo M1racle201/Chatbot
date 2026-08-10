@@ -2,25 +2,13 @@
 
 import asyncio
 
-from agent import Agent
-from agents import ExecutorAgent, Pipeline, RewriterAgent, VerifierAgent
-from chat import Chat
-from history import HISTORY_FILE, History
+from vibechatbot import config
+from vibechatbot.runtime import build_runtime
 
-chat_client = Chat()
-agent_client = Agent(chat_client)
-
-# Agentic RAG 流水线：复写 → 执行（检索+工具）→ 核查（不通过按病因分类打回）
-agentic_verifier = VerifierAgent(chat=chat_client)
-agentic_pipeline = Pipeline(
-    [
-        RewriterAgent(chat=chat_client),
-        ExecutorAgent(chat=chat_client),
-        agentic_verifier,
-    ],
-    verifier=agentic_verifier,
-    max_retries=3,
-)
+runtime = build_runtime()
+chat_client = runtime.chat
+agent_client = runtime.agent
+agentic_pipeline = runtime.pipeline
 
 
 def show_help() -> None:
@@ -31,7 +19,7 @@ def show_help() -> None:
     print("/clear_history - 清空历史记录")
     print("/clear_memory  - 清除对话记忆")
     print("/exit          - 退出")
-    print("聊天记录 -> CHAT/，任务记录 -> TASK/，流水线记录 -> AGENTIC/")
+    print(f"聊天记录 -> {config.CHAT_DIR}，任务记录 -> {config.TASK_DIR}，流水线记录 -> {config.AGENTIC_DIR}")
 
 
 def agent_loop() -> None:
