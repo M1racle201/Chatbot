@@ -5,7 +5,7 @@ import re
 import zipfile
 import xml.etree.ElementTree as ET
 
-from vector_store import VectorStore
+from vibechatbot.vector_store import VectorStore
 
 # Word 文档的命名空间
 _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
