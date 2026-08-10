@@ -23,3 +23,17 @@ prompt/*
 !prompt/rewriter
 !prompt/executor
 !prompt/verifier
+
+
+# Node / Ink UI
+ui/node_modules/
+ui/.build/
+
+# UI 清单文件需要提交（其余 JSON 仍按 *.json 忽略）
+!ui/package.json
+!ui/package-lock.json
+ui/VECTOR_DB/
+ui/AGENTIC/
+ui/CHAT/
+ui/TASK/
+ui/OUTPUT/
