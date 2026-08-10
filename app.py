@@ -35,7 +35,7 @@ if mode == "聊天":
 else:
     st.write("让 AI 自主完成多步任务：读取文档、检索知识库、生成文件等。")
     task = st.text_area("任务描述", placeholder="例如：读取 C:/docs/报告.pdf，总结并保存到 OUTPUT/总结.md")
-    if st.button("🚀 执行任务"):
+    if st.button("执行任务"):
         if not task.strip():
             st.warning("请输入任务描述")
         else:

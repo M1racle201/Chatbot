@@ -1,21 +1,37 @@
-﻿"""VibeChatbot 入口：命令模式 + 持续对话循环 + 自主任务模式。"""
+"""VibeChatbot 入口：命令模式 + 持续对话循环 + 自主任务模式。"""
+
+import asyncio
 
 from agent import Agent
+from agents import ExecutorAgent, Pipeline, RewriterAgent, VerifierAgent
 from chat import Chat
 from history import HISTORY_FILE, History
 
 chat_client = Chat()
 agent_client = Agent(chat_client)
 
+# Agentic RAG 流水线：复写 → 执行（检索+工具）→ 核查（不通过按病因分类打回）
+agentic_verifier = VerifierAgent(chat=chat_client)
+agentic_pipeline = Pipeline(
+    [
+        RewriterAgent(chat=chat_client),
+        ExecutorAgent(chat=chat_client),
+        agentic_verifier,
+    ],
+    verifier=agentic_verifier,
+    max_retries=3,
+)
+
 
 def show_help() -> None:
     """打印可用命令列表。"""
     print("/chat          - 开始聊天")
     print("/agent         - 自主任务模式（拆解任务、调用工具、汇报结果）")
+    print("/agentic       - 智能任务模式（复写→执行→核查闭环）")
     print("/clear_history - 清空历史记录")
     print("/clear_memory  - 清除对话记忆")
     print("/exit          - 退出")
-    print("聊天记录 -> CHAT/，任务记录 -> TASK/")
+    print("聊天记录 -> CHAT/，任务记录 -> TASK/，流水线记录 -> AGENTIC/")
 
 
 def agent_loop() -> None:
@@ -35,6 +51,36 @@ def agent_loop() -> None:
             chat_client.clear_memory()
             continue
         agent_client.run(task)
+
+
+def agentic_loop() -> None:
+    """智能任务循环：复写 → 执行 → 核查，输入 /exit 退出。"""
+    print("已进入智能任务模式（复写 → 执行 → 核查），输入 /exit 退出")
+    while True:
+        task = input("任务: ").strip()
+        if not task:
+            continue
+        if task == "/exit":
+            print("已退出智能任务模式")
+            break
+        if task == "/clear_history":
+            chat_client.history.clear()
+            continue
+        if task in ("/clear_memory", "/clear_memmory"):
+            chat_client.clear_memory()
+            continue
+        final = asyncio.run(agentic_pipeline.run(task))
+        verdict = final.meta.get("verdict", {})
+        conclusion = final.meta.get("candidate", final.output)
+        if verdict.get("exhausted"):
+            print("\n⚠ 核查未通过已达上限，以下为强制输出:")
+        print(f"结论: {conclusion}")
+        if verdict.get("reason"):
+            print(f"核查: {verdict['reason']}")
+        print(
+            f"打回统计: 复写 {agentic_pipeline.attempts['rewrite']} 次，"
+            f"重搜 {agentic_pipeline.attempts['research']} 次"
+        )
 
 
 def chat_loop() -> None:
@@ -59,13 +105,15 @@ def chat_loop() -> None:
 
 def main() -> None:
     """主循环：命令模式。"""
-    print("输入 /chat 开始聊天，/agent 执行任务，/exit 退出")
+    print("输入 /chat 开始聊天，/agent 执行任务，/agentic 智能任务，/exit 退出")
     while True:
         command = input("> ").strip()
         if command == "/chat":
             chat_loop()
         elif command == "/agent":
             agent_loop()
+        elif command == "/agentic":
+            agentic_loop()
         elif command == "/clear_history":
             chat_client.history.clear()
         elif command in ("/clear_memory", "/clear_memmory"):

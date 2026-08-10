@@ -4,6 +4,7 @@
 # 运行时数据目录(挂载卷/本地数据,不入库)
 CHAT/
 TASK/
+AGENTIC/
 OUTPUT/
 VECTOR_DB/
 .hf_cache/
@@ -19,3 +20,6 @@ __pycache__/
 # 系统提示词(本地内容,不提交)
 prompt/*
 !prompt/system
+!prompt/rewriter
+!prompt/executor
+!prompt/verifier
