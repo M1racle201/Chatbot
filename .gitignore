@@ -1,13 +1,15 @@
 # 敏感文件: API 密钥不提交
 .env
 
-# 运行时数据目录(挂载卷/本地数据,不入库)
-CHAT/
-TASK/
-AGENTIC/
-OUTPUT/
-VECTOR_DB/
+# 运行时数据目录(统一收拢到 data/,挂载卷/本地数据,不入库)
+data/
 .hf_cache/
+
+# Python 打包产物
+build/
+dist/
+*.egg-info/
+.pytest_cache/
 
 # 历史记录与任务存档 JSON
 *.json
