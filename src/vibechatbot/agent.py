@@ -4,11 +4,12 @@ import json
 import os
 from datetime import datetime
 
+from vibechatbot import config
 from vibechatbot.tools import TOOL_DEFINITIONS, execute_tool
 
 MAX_AGENT_STEPS = 10
 AGENT_MAX_MESSAGES = 60
-TASK_DIR = "TASK"
+TASK_DIR = config.TASK_DIR
 
 
 class Agent:

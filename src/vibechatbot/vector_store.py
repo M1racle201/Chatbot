@@ -5,7 +5,9 @@ from datetime import datetime
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
-DB_DIR = "VECTOR_DB"
+from vibechatbot import config
+
+DB_DIR = config.VECTOR_DB_DIR
 COLLECTION_NAME = "documents"
 EMBEDDING_MODEL = "BAAI/bge-small-zh-v1.5"
 QUERY_INSTRUCTION = "为这个句子生成表示以用于检索相关文章："

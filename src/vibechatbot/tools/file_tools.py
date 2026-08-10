@@ -5,6 +5,7 @@ import re
 import zipfile
 import xml.etree.ElementTree as ET
 
+from vibechatbot import config
 from vibechatbot.vector_store import VectorStore
 
 # Word 文档的命名空间
@@ -17,7 +18,7 @@ SEPARATORS = ("\n", "!", "！", ".", "。")
 _store = None
 
 # agent 可写文件的白名单目录
-OUTPUT_DIR = "OUTPUT"
+OUTPUT_DIR = config.OUTPUT_DIR
 
 # 合法文件名：不含路径分隔符、点号开头、路径穿越等
 _SAFE_FILENAME = re.compile(r"^[\w\u4e00-\u9fff.\-]+$")

@@ -8,6 +8,7 @@ import json
 import os
 from datetime import datetime
 
+from vibechatbot import config
 from vibechatbot.agents.base import AgentMessage, BaseAgent
 
 
@@ -18,7 +19,7 @@ class Pipeline:
         self,
         agents: list,
         max_retries: int = 3,
-        archive_dir: str = "AGENTIC",
+        archive_dir: str = config.AGENTIC_DIR,
         verifier=None,
     ):
         self.agents = agents

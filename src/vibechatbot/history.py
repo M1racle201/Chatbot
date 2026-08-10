@@ -3,7 +3,7 @@
 import json
 import os
 
-HISTORY_FILE = os.path.join("CHAT", "history.json")
+from vibechatbot.config import HISTORY_FILE
 
 
 class History:
