@@ -1,6 +1,5 @@
 ﻿"""DeepSeek 聊天客户端：封装聊天 API 调用与消息管理。"""
 
-import os
 import time
 
 from openai import (
