@@ -267,10 +267,6 @@ class TestPipeline(unittest.TestCase):
             asyncio.run(pipeline.run("x"))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestIsSimpleToolTask(unittest.TestCase):
     def test_simple_tool_keywords_return_true(self):
         for task in ("读取 C:/a.pdf 并保存", "生成报告并输出到文件", "把 D:/x.docx 入库"):
@@ -279,3 +275,7 @@ class TestIsSimpleToolTask(unittest.TestCase):
 
     def test_knowledge_reasoning_returns_false(self):
         self.assertFalse(is_simple_tool_task("基于知识库回答深海采矿的影响"))
+
+
+if __name__ == "__main__":
+    unittest.main()
