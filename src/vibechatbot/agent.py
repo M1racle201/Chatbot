@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime
 
-from TOOLS import TOOL_DEFINITIONS, execute_tool
+from vibechatbot.tools import TOOL_DEFINITIONS, execute_tool
 
 MAX_AGENT_STEPS = 10
 AGENT_MAX_MESSAGES = 60

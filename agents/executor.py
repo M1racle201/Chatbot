@@ -40,13 +40,13 @@ DEFAULT_EXECUTOR_PROMPT = """你是主题执行器,负责基于向量知识库�
 
 def _default_tools():
     """加载工具定义(真实运行时;避免测试环境依赖 chromadb)。"""
-    from TOOLS import TOOL_DEFINITIONS
+    from vibechatbot.tools import TOOL_DEFINITIONS
 
     return TOOL_DEFINITIONS
 
 
 def _default_tool_executor():
-    from TOOLS import execute_tool
+    from vibechatbot.tools import execute_tool
 
     return execute_tool
 
