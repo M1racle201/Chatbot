@@ -1,10 +1,9 @@
-"""ui/bridge.py stdio 协议单元测试(注入 fake 后端,不联网)。"""
+"""src/vibechatbot/bridge.py stdio 协议单元测试（注入 fake 后端，不联网）。"""
 
 import io
 import json
 import unittest
 
-from vibechatbot.agents.base import AgentMessage
 from vibechatbot.bridge import Bridge
 
 
@@ -17,57 +16,30 @@ class FakeChat:
     def __init__(self):
         self.history = FakeHistory()
 
-    def stream_chat(self, content):
-        print("已导入 2 条历史记录")
-        yield "你"
-        yield "好"
-
     def clear_memory(self):
         print("对话记忆已清除")
 
 
-class FakeAgent:
-    def run(self, task):
-        print("  → load(...) => ok")
-        print("任务完成汇报")
+class FakeRunTask:
+    """按任务返回结构化结果的 fake 统一任务入口。"""
+
+    def __call__(self, task):
+        if task == "保存文件":
+            return {"route": "fast", "output": "快速通道结论"}
+        return {
+            "route": "pipeline",
+            "output": "最终结论",
+            "verdict": {"passed": False, "reason": "缺少依据", "exhausted": True},
+            "attempts": {"rewrite": 1, "research": 2},
+        }
 
 
-class FakeExecutor:
-    def run(self, message):
-        return AgentMessage(task=message.task, output="快速通道结论")
-
-
-class FakePipeline:
-    def __init__(self):
-        self.attempts = {"rewrite": 1, "research": 2}
-
-    def run(self, task):
-        return AgentMessage(
-            task=task,
-            output="候选结论",
-            meta={
-                "verdict": {
-                    "passed": False,
-                    "reason": "缺少依据",
-                    "exhausted": True,
-                },
-                "candidate": "最终结论",
-            },
-        )
-
-
-def run_bridge(commands, is_simple=None):
+def run_bridge(commands, run_task=None):
     stdin = io.StringIO(
         "\n".join(json.dumps(c, ensure_ascii=False) for c in commands) + "\n"
     )
     stdout = io.StringIO()
-    bridge = Bridge(
-        chat=FakeChat(),
-        agent=FakeAgent(),
-        executor=FakeExecutor(),
-        pipeline=FakePipeline(),
-        is_simple_tool_task=is_simple or (lambda task: False),
-    )
+    bridge = Bridge(chat=FakeChat(), run_task=run_task or FakeRunTask())
     bridge.run(stdin=stdin, stdout=stdout)
     return [json.loads(line) for line in stdout.getvalue().strip().splitlines()]
 
@@ -77,44 +49,33 @@ class TestBridge(unittest.TestCase):
         events = run_bridge([])
         self.assertEqual(events, [{"type": "ready"}])
 
-    def test_chat_streams_and_done(self):
-        events = run_bridge([{"type": "chat", "content": "你好"}])
-        kinds = [e["type"] for e in events]
-        self.assertIn("user", kinds)
-        self.assertIn("stream", kinds)
-        self.assertEqual(events[-1], {"type": "done"})
-        stream_text = "".join(e["content"] for e in events if e["type"] == "stream")
-        self.assertEqual(stream_text, "你好")
+    def test_task_fast_path_emits_result(self):
+        events = run_bridge([{"type": "task", "content": "保存文件"}])
+        results = [e for e in events if e["type"] == "result"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["content"], "快速通道结论")
+        self.assertEqual(results[0]["route"], "fast")
 
-    def test_chat_captures_print_as_log(self):
-        events = run_bridge([{"type": "chat", "content": "你好"}])
-        log_lines = [e["line"] for e in events if e["type"] == "log"]
-        self.assertIn("已导入 2 条历史记录", log_lines)
+    def test_task_full_flow_emits_verdict_and_attempts(self):
+        events = run_bridge([{"type": "task", "content": "知识库问答"}])
+        results = [e for e in events if e["type"] == "result"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["content"], "最终结论")
+        self.assertEqual(results[0]["route"], "pipeline")
+        self.assertEqual(results[0]["verdict"]["exhausted"], True)
+        self.assertEqual(results[0]["attempts"], {"rewrite": 1, "research": 2})
 
-    def test_agent_emits_logs_and_status(self):
-        events = run_bridge([{"type": "agent", "content": "总结报告"}])
-        kinds = [e["type"] for e in events]
-        self.assertIn("status", kinds)
-        log_lines = [e["line"] for e in events if e["type"] == "log"]
-        self.assertIn("  → load(...) => ok", log_lines)
-        self.assertIn("任务完成汇报", log_lines)
-
-    def test_agentic_fast_path(self):
-        events = run_bridge(
-            [{"type": "agentic", "content": "保存文件"}],
-            is_simple=lambda task: True,
-        )
+    def test_agent_alias_routes_to_task(self):
+        events = run_bridge([{"type": "agent", "content": "保存文件"}])
         results = [e for e in events if e["type"] == "result"]
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["content"], "快速通道结论")
 
-    def test_agentic_full_flow(self):
+    def test_agentic_alias_routes_to_task(self):
         events = run_bridge([{"type": "agentic", "content": "知识库问答"}])
         results = [e for e in events if e["type"] == "result"]
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["content"], "最终结论")
-        self.assertEqual(results[0]["verdict"]["exhausted"], True)
-        self.assertEqual(results[0]["attempts"], {"rewrite": 1, "research": 2})
 
     def test_clear_history_and_memory(self):
         events = run_bridge([{"type": "clear_history"}, {"type": "clear_memory"}])
@@ -123,10 +84,9 @@ class TestBridge(unittest.TestCase):
         self.assertIn("对话记忆已清除", log_lines)
 
     def test_bad_json_returns_error(self):
-        events = run_bridge([])
         stdin = io.StringIO("not-json\n")
         stdout = io.StringIO()
-        bridge = Bridge(chat=FakeChat(), agent=FakeAgent())
+        bridge = Bridge(chat=FakeChat(), run_task=FakeRunTask())
         bridge.run(stdin=stdin, stdout=stdout)
         lines = [json.loads(line) for line in stdout.getvalue().strip().splitlines()]
         self.assertEqual(lines[0], {"type": "ready"})
@@ -141,7 +101,7 @@ class TestBridge(unittest.TestCase):
         self.assertIn("未知命令类型", errors[0]["message"])
 
     def test_exit_stops_loop(self):
-        events = run_bridge([{"type": "exit"}, {"type": "chat", "content": "x"}])
+        events = run_bridge([{"type": "exit"}, {"type": "task", "content": "x"}])
         kinds = [e["type"] for e in events]
         self.assertNotIn("user", kinds)
 

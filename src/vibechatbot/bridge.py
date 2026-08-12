@@ -1,11 +1,12 @@
 """stdio 桥：Ink 前端通过 stdin/stdout 的 JSON 行与后端交互。
 
 协议（每行一个 JSON 对象）：
-- 命令（stdin）：{"type": "chat"|"agent"|"agentic", "content": "..."}
+- 命令（stdin）：{"type": "task", "content": "..."}
+  兼容别名：{"type": "agent"} / {"type": "agentic"}（统一按 task 处理）
   {"type": "clear_history"} / {"type": "clear_memory"} / {"type": "exit"}
 - 事件（stdout）：ready / user / stream / log / status / result / error / pong
 
-依赖通过构造函数注入（chat/agent/executor/pipeline），便于单元测试。
+依赖通过构造函数注入（chat/run_task），便于单元测试。
 """
 
 import asyncio
@@ -14,7 +15,7 @@ import inspect
 import json
 import sys
 
-from vibechatbot.agents.base import AgentMessage
+from vibechatbot.runtime import build_runtime
 
 
 def _run_sync_or_async(fn, *args):
@@ -48,19 +49,9 @@ class _LineEmitter:
 class Bridge:
     """事件转发桥：stdin 收命令，stdout 发事件。"""
 
-    def __init__(
-        self,
-        chat=None,
-        agent=None,
-        executor=None,
-        pipeline=None,
-        is_simple_tool_task=None,
-    ):
+    def __init__(self, chat=None, run_task=None):
         self.chat = chat
-        self.agent = agent
-        self.executor = executor
-        self.pipeline = pipeline
-        self.is_simple_tool_task = is_simple_tool_task or (lambda task: False)
+        self.run_task = run_task or (lambda content: {"route": "fast", "output": ""})
         self._stdout = None
 
     # ---------- 事件 ----------
@@ -99,12 +90,8 @@ class Bridge:
     def handle(self, command: dict) -> bool:
         """处理单条命令；返回 False 表示退出。"""
         kind = command.get("type")
-        if kind == "chat":
-            self._handle_chat(command.get("content", ""))
-        elif kind == "agent":
-            self._handle_agent(command.get("content", ""))
-        elif kind == "agentic":
-            self._handle_agentic(command.get("content", ""))
+        if kind in ("task", "agent", "agentic"):
+            self._handle_task(command.get("content", ""))
         elif kind == "clear_history":
             with self._event_stream():
                 self.chat.history.clear()
@@ -120,51 +107,20 @@ class Bridge:
             self._emit(type="error", message=f"未知命令类型: {kind}")
         return True
 
-    # ---------- 模式处理 ----------
-    def _handle_chat(self, content: str) -> None:
-        """聊天模式：流式转发回复块。"""
-        self._emit(type="user", content=content)
-        try:
-            with self._event_stream():
-                for chunk in self.chat.stream_chat(content):
-                    self._emit(type="stream", content=chunk)
-            self._emit(type="done")
-        except Exception as exc:
-            self._emit(type="error", message=str(exc))
-
-    def _handle_agent(self, content: str) -> None:
-        """自主任务模式：转发工具日志与过程输出。"""
+    # ---------- 统一任务处理 ----------
+    def _handle_task(self, content: str) -> None:
+        """统一任务模式：快速通道或复写→执行→核查，结果以 result 事件返回。"""
         self._emit(type="user", content=content)
         self._emit(type="status", text="任务执行中...")
         try:
             with self._event_stream():
-                self.agent.run(content)
-            self._emit(type="status", text="任务完成")
-        except Exception as exc:
-            self._emit(type="error", message=str(exc))
-
-    def _handle_agentic(self, content: str) -> None:
-        """智能任务模式：快速通道或复写→执行→核查全流程。"""
-        self._emit(type="user", content=content)
-        try:
-            if self.is_simple_tool_task(content):
-                self._emit(type="status", text="快速通道：直接执行工具任务...")
-                with self._event_stream():
-                    final = _run_sync_or_async(
-                        self.executor.run, AgentMessage(task=content)
-                    )
-                self._emit(type="result", content=final.output)
-                return
-            self._emit(type="status", text="复写 → 执行 → 核查...")
-            with self._event_stream():
-                final = _run_sync_or_async(self.pipeline.run, content)
-            verdict = final.meta.get("verdict", {})
-            conclusion = final.meta.get("candidate", final.output)
+                result = _run_sync_or_async(self.run_task, content)
             self._emit(
                 type="result",
-                content=conclusion,
-                verdict=verdict,
-                attempts=dict(self.pipeline.attempts),
+                content=result.get("output", ""),
+                route=result.get("route", "pipeline"),
+                verdict=result.get("verdict", {}),
+                attempts=result.get("attempts", {}),
             )
         except Exception as exc:
             self._emit(type="error", message=str(exc))
@@ -172,16 +128,8 @@ class Bridge:
 
 def main():
     """组装真实后端并启动桥。"""
-    from vibechatbot.runtime import build_runtime
-
     runtime = build_runtime()
-    bridge = Bridge(
-        chat=runtime.chat,
-        agent=runtime.agent,
-        executor=runtime.executor,
-        pipeline=runtime.pipeline,
-        is_simple_tool_task=runtime.is_simple_tool_task,
-    )
+    bridge = Bridge(chat=runtime.chat, run_task=runtime.run_task)
     bridge.run()
 
 

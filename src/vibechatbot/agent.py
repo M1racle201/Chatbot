@@ -23,7 +23,7 @@ class Agent:
         self.chat = chat
         self.agent_max_messages = agent_max_messages
 
-    def run(self, task: str) -> None:
+    def run(self, task: str) -> str:
         """执行任务：工具循环直到最终汇报，并把任务记录存入 TASK 文件夹。"""
         agent_messages = self.chat.messages + [{"role": "user", "content": task}]
         for _ in range(MAX_AGENT_STEPS):
@@ -55,13 +55,11 @@ class Agent:
                     )
                 continue
             reply = message.content or ""
-            for char in reply:
-                print(char, end="", flush=True)
-            print()
             self._save_task_record(task, agent_messages, reply)
-            return
+            return reply
         print("已达最大执行步数，任务中断")
         self._save_task_record(task, agent_messages, "已达最大执行步数，任务中断")
+        return "已达最大执行步数，任务中断"
 
     def _compress_agent_messages(self, agent_messages: list) -> list:
         """agent 上下文超长时：总结进度，保留最近完整消息（避免截断 tool 关联）。"""

@@ -10,7 +10,7 @@ VibeChatbot 面向在 Windows、PowerShell 和常见终端中工作的开发者�
 
 ## Product Purpose
 
-VibeChatbot 是基于 DeepSeek 的终端 AI 助手。它通过 `/chat`、`/agent` 和 `/agentic` 三种模式承载从直接问答到“复写、执行、核查”闭环的任务。成功的界面应让用户始终知道当前项目、模式、Agent 状态、最近任务和下一步可执行操作，同时不干扰长文本与代码结果的阅读。
+VibeChatbot 是基于 DeepSeek 的终端 AI 助手。它采用统一任务模式：简单工具任务自动走快速通道，其余任务进入“复写、执行、核查”闭环。成功的界面应让用户始终知道当前项目、模式、Agent 状态、最近任务和下一步可执行操作，同时不干扰长文本与代码结果的阅读。
 
 ## Brand Personality
 

@@ -1,7 +1,7 @@
 # VibeChatbot
 
-基于 DeepSeek 的终端聊天 + Agentic RAG 助手。支持 `/chat` 对话、`/agent` 自主任务、
-`/agentic` 复写→执行→核查闭环，以及 `ui/` 下的 Ink 终端 UI。
+基于 DeepSeek 的终端 Agentic RAG 助手。统一任务模式：简单工具任务自动走快速通道，
+其余任务走复写→执行→核查闭环，以及 `ui/` 下的 Ink 终端 UI。
 
 ## 安装与运行
 
