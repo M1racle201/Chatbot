@@ -73,7 +73,7 @@ export function Sidebar({items, rows}) {
 
 export function WorkspaceHeader({mode, busy, compact}) {
   const context = compact
-    ? MODE_LABEL[mode]
+    ? `VibeChatbot · ${MODE_LABEL[mode]}`
     : `Context: VibeChatbot · ${MODE_LABEL[mode]}`;
 
   return (

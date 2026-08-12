@@ -6,7 +6,9 @@
   "description": "VibeChatbot Ink 终端 UI",
   "scripts": {
     "build": "esbuild index.jsx --bundle --platform=node --format=esm --alias:react-devtools-core=./devtools-stub.js --banner:js=\"import {createRequire} from 'module';const require=createRequire(import.meta.url);\" --outfile=.build/index.mjs",
-    "test": "node --test layout.test.mjs",
+    "test:layout": "node --test layout.test.mjs",
+    "test:render": "esbuild workbench.render.test.jsx --bundle --platform=node --format=esm --alias:react-devtools-core=./devtools-stub.js --banner:js=\"import {createRequire} from 'module';const require=createRequire(import.meta.url);\" --outfile=.build/workbench.render.test.mjs && node --test .build/workbench.render.test.mjs",
+    "test": "npm run test:layout && npm run test:render",
     "start": "npm run build && node .build/index.mjs"
   },
   "dependencies": {
