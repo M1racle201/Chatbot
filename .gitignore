@@ -18,6 +18,7 @@ dist/
 __pycache__/
 *.pyc
 .venv/
+.worktrees/
 
 # 系统提示词(本地内容,不提交)
 prompt/*
