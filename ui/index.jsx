@@ -1,10 +1,16 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {Box, Text, render} from 'ink';
-import TextInput from 'ink-text-input';
+import {Box, render} from 'ink';
 import {spawn} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import readline from 'node:readline';
 import path from 'node:path';
+import {getWorkspaceColumns, isWideLayout} from './layout.mjs';
+import {
+  Composer,
+  Sidebar,
+  Transcript,
+  WorkspaceHeader,
+} from './workbench.jsx';
 
 // bundle ????? .build/??????????? bridge.py
 const entryDir = path.dirname(process.argv[1] || process.cwd());
@@ -22,17 +28,6 @@ const MODE_LABEL = {
   agent: '任务',
   agentic: '智能任务',
 };
-
-const MODE_COLOR = {
-  idle: 'gray',
-  chat: 'green',
-  agent: 'yellow',
-  agentic: 'magenta',
-};
-
-const MAX_VISIBLE_ITEMS = 60;
-const MIN_TRANSCRIPT_ROWS = 8;
-const RESERVED_SHELL_ROWS = 7;
 
 function createBridge(onEvent, onClose, onError) {
   const child = spawn(pythonCmd, [bridgePath], {
@@ -73,101 +68,6 @@ function useTerminalSize() {
   }, []);
 
   return size;
-}
-
-function Header({mode, busy, columns}) {
-  return (
-    <Box
-      width={columns}
-      borderStyle="single"
-      borderColor="gray"
-      paddingX={1}
-      justifyContent="space-between"
-    >
-      <Box>
-        <Text bold color="cyan">VibeChatbot</Text>
-        <Text dimColor>{'  ·  '}</Text>
-        <Text bold color={MODE_COLOR[mode]}>{MODE_LABEL[mode]}</Text>
-      </Box>
-      <Text color={busy ? 'yellow' : 'green'}>{busy ? '处理中' : '就绪'}</Text>
-    </Box>
-  );
-}
-
-function Message({item, columns}) {
-  const textWidth = Math.max(columns - 4, 20);
-
-  switch (item.kind) {
-    case 'user':
-      return (
-        <Box key={item.key} marginBottom={1} width={columns}>
-          <Text color="cyan" bold>{'› '}</Text>
-          <Text wrap="wrap" width={textWidth}>{item.text}</Text>
-        </Box>
-      );
-    case 'assistant':
-      return (
-        <Box key={item.key} marginBottom={1} width={columns}>
-          <Text color="green" bold>{'AI  '}</Text>
-          <Text color="green" wrap="wrap" width={textWidth}>{item.text}</Text>
-        </Box>
-      );
-    case 'log':
-      return <Text key={item.key} dimColor wrap="truncate-end">{'  · '}{item.text}</Text>;
-    case 'notice':
-      return <Text key={item.key} color="blue" wrap="wrap">{'  · '}{item.text}</Text>;
-    case 'result':
-      return (
-        <Box key={item.key} flexDirection="column" marginTop={1} marginBottom={1} paddingLeft={1} width={columns}>
-          <Text bold color="white">结果</Text>
-          <Text wrap="wrap" width={Math.max(columns - 2, 20)}>{item.text}</Text>
-        </Box>
-      );
-    case 'error':
-      return <Text key={item.key} color="red" wrap="wrap">{'错误  '}{item.text}</Text>;
-    default:
-      return <Text key={item.key}> </Text>;
-  }
-}
-
-function Transcript({items, stream, status, rows, columns}) {
-  const transcriptRows = Math.max(rows - RESERVED_SHELL_ROWS, MIN_TRANSCRIPT_ROWS);
-
-  return (
-    <Box flexDirection="column" height={transcriptRows} width={columns} overflow="hidden" marginTop={1}>
-      {items.slice(-MAX_VISIBLE_ITEMS).map((item) => (
-        <Message key={item.key} item={item} columns={columns} />
-      ))}
-      {stream && (
-        <Message key="stream" item={{key: 'stream', kind: 'assistant', text: `${stream}▌`}} columns={columns} />
-      )}
-      {status && <Text dimColor wrap="truncate-end">{'  · '}{status}</Text>}
-    </Box>
-  );
-}
-
-function Composer({input, setInput, submit, mode, busy, columns}) {
-  const hint = mode === 'idle'
-    ? '/chat  /agent  /agentic'
-    : busy
-      ? '处理中'
-      : '/help  /exit';
-
-  return (
-    <Box
-      width={columns}
-      marginTop={1}
-      paddingX={1}
-      borderStyle="single"
-      borderColor={busy ? 'yellow' : 'gray'}
-    >
-      <Text color="cyan" bold>{'› '}</Text>
-      <Box flexGrow={1}>
-        <TextInput value={input} onChange={setInput} onSubmit={submit} />
-      </Box>
-      <Text dimColor>{'  '}{hint}</Text>
-    </Box>
-  );
 }
 
 const App = () => {
@@ -294,12 +194,30 @@ const App = () => {
   };
 
   const {columns, rows} = useTerminalSize();
+  const wide = isWideLayout(columns);
+  const workspaceColumns = getWorkspaceColumns(columns);
 
   return (
-    <Box flexDirection="column" width={columns}>
-      <Header mode={mode} busy={busy} columns={columns} />
-      <Transcript items={items} stream={stream} status={status} rows={rows} columns={columns} />
-      <Composer input={input} setInput={setInput} submit={submit} mode={mode} busy={busy} columns={columns} />
+    <Box width={columns} height={rows}>
+      {wide && <Sidebar items={items} rows={rows} />}
+      <Box width={workspaceColumns} height={rows} flexDirection="column">
+        <WorkspaceHeader mode={mode} busy={busy} compact={!wide} />
+        <Transcript
+          items={items}
+          stream={stream}
+          status={status}
+          rows={rows}
+          columns={workspaceColumns}
+        />
+        <Composer
+          input={input}
+          setInput={setInput}
+          submit={submit}
+          mode={mode}
+          busy={busy}
+          columns={workspaceColumns}
+        />
+      </Box>
     </Box>
   );
 };
