@@ -13,11 +13,6 @@ test('shows the sidebar only when the terminal is at least 104 columns', () => {
   assert.equal(layout.isWideLayout?.(104), true);
 });
 
-test('reserves 28 columns for the wide sidebar', () => {
-  assert.equal(layout.getWorkspaceColumns?.(140), 112);
-  assert.equal(layout.getWorkspaceColumns?.(80), 80);
-});
-
 test('derives at most six newest user prompts for recent threads', () => {
   const items = Array.from({length: 8}, (_, index) => ({
     kind: index === 2 ? 'assistant' : 'user',
@@ -34,7 +29,3 @@ test('derives at most six newest user prompts for recent threads', () => {
   ]);
 });
 
-test('keeps a usable transcript in compact terminals', () => {
-  assert.equal(layout.getTranscriptRows?.(40), 32);
-  assert.equal(layout.getTranscriptRows?.(20), 13);
-});

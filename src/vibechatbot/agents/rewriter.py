@@ -54,9 +54,12 @@ class RewriterAgent(BaseAgent):
 
     async def _process(self, message: AgentMessage) -> str:
         user_content = message.task
+        history = message.context.get("session_history")
+        if history:
+            user_content = f"{history}\n\n当前任务: {message.task}"
         revision = message.context.get("revision")
         if revision:
-            user_content = f"{message.task}\n\n上一轮核查反馈:{revision}"
+            user_content = f"{user_content}\n\n上一轮核查反馈:{revision}"
         messages = [
             {"role": "system", "content": self.rewrite_prompt},
             {"role": "user", "content": user_content},

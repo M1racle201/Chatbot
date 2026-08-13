@@ -59,6 +59,21 @@ class TestRewriterAgent(unittest.TestCase):
         self.assertEqual(message.meta["agent"], "rewriter")
         self.assertIn("elapsed_ms", message.meta)
 
+    def test_chat_uses_non_stream_when_no_llm(self):
+        """chat 分支走非流式：中间产物不需要流式输出。"""
+
+        class FakeChat:
+            model = "test-model"
+
+            def _create_with_retry(self, model, messages):
+                msg = type("Msg", (), {"content": "非流式改写"})()
+                choice = type("Choice", (), {"message": msg})()
+                return type("Resp", (), {"choices": [choice]})()
+
+        agent = RewriterAgent(chat=FakeChat())
+        message = asyncio.run(agent.run(AgentMessage(task="x")))
+        self.assertEqual(message.output, "非流式改写")
+
 
 if __name__ == "__main__":
     unittest.main()

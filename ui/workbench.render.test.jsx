@@ -2,7 +2,7 @@ import React from 'react';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Box, renderToString} from 'ink';
-import {getWorkspaceColumns, isWideLayout} from './layout.mjs';
+import {isWideLayout} from './layout.mjs';
 import {
   Composer,
   Sidebar,
@@ -17,29 +17,21 @@ const ITEMS = [
   {key: 4, kind: 'result', text: 'Streaming path verified.'},
 ];
 
-function Preview({columns, rows}) {
+function Preview({columns}) {
   const wide = isWideLayout(columns);
-  const workspaceColumns = getWorkspaceColumns(columns);
 
   return (
-    <Box width={columns} height={rows}>
-      {wide && <Sidebar items={ITEMS} rows={rows} />}
-      <Box width={workspaceColumns} height={rows} flexDirection="column">
-        <WorkspaceHeader mode="idle" busy={false} compact={!wide} />
-        <Transcript
-          items={ITEMS}
-          stream=""
-          status=""
-          rows={rows}
-          columns={workspaceColumns}
-        />
+    <Box width="100%" height="100%" flexDirection="row">
+      {wide && <Sidebar items={ITEMS} />}
+      <Box flexGrow={1} minWidth={0} flexDirection="column">
+        <WorkspaceHeader label="Task" busy={false} compact={!wide} model="deepseek-chat" />
+        <Transcript items={ITEMS} stream="" status="" />
         <Composer
           input=""
           setInput={() => {}}
           submit={() => {}}
-          mode="idle"
+          label="Task"
           busy={false}
-          columns={workspaceColumns}
         />
       </Box>
     </Box>
@@ -47,7 +39,7 @@ function Preview({columns, rows}) {
 }
 
 test('wide render contains the approved workbench regions', () => {
-  const frame = renderToString(<Preview columns={140} rows={40} />, {columns: 140});
+  const frame = renderToString(<Preview columns={140} />, {columns: 140, rows: 40});
 
   assert.match(frame, /VibeChatbot/);
   assert.match(frame, /Recent threads/);
@@ -56,15 +48,16 @@ test('wide render contains the approved workbench regions', () => {
   assert.match(frame, /Agent/);
   assert.match(frame, /Tool/);
   assert.match(frame, /Result/);
+  assert.match(frame, /Agent ready · deepseek-chat/);
   assert.match(frame, /Ask the agent to inspect, build, or explain/);
   assert.ok(frame.split('\n').length <= 40);
 });
 
 test('compact render hides the sidebar but keeps project context', () => {
-  const frame = renderToString(<Preview columns={80} rows={24} />, {columns: 80});
+  const frame = renderToString(<Preview columns={80} />, {columns: 80, rows: 24});
 
   assert.doesNotMatch(frame, /Recent threads/);
-  assert.match(frame, /VibeChatbot · Auto/);
+  assert.match(frame, /VibeChatbot · Task/);
   assert.match(frame, /Agent ready/);
   assert.match(frame, /Ask the agent to inspect, build, or explain/);
   assert.ok(frame.split('\n').length <= 24);

@@ -19,18 +19,27 @@ class Pipeline:
         self,
         agents: list,
         max_retries: int = 3,
-        archive_dir: str = config.AGENTIC_DIR,
+        archive_dir: str = None,
         verifier=None,
     ):
         self.agents = agents
         self.max_retries = max_retries  # 核查不通过时的最大重试轮数
-        self.archive_dir = archive_dir
+        self.archive_dir = archive_dir  # None 时不写存档,由 Runtime 统一会话存档
         self.verifier = verifier  # 核查器(须在 agents 中);None 时无闭环
         self.attempts = {"rewrite": 0, "research": 0}  # 各打回类型计数
+        self.last_steps = []  # 最近一次任务的步骤记录,供会话存档使用
 
-    async def run(self, task: str) -> AgentMessage:
-        """执行整条流水线;核查不通过时重试闭环,返回最终 AgentMessage。"""
-        message = AgentMessage(task=task)
+    async def run(
+        self, task: str, context: dict = None, stream_callback=None,
+    ) -> AgentMessage:
+        """执行整条流水线;核查不通过时重试闭环,返回最终 AgentMessage。
+
+        context: 可选的共享上下文(如会话历史),作为 AgentMessage.context 初值。
+        stream_callback: 可选,把各 agent 的流式文本增量转发(如 UI 实时显示)。
+        """
+        for agent in self.agents:
+            agent.stream_callback = stream_callback
+        message = AgentMessage(task=task, context=dict(context or {}))
         steps = []
         attempt = 0
         self.attempts = {"rewrite": 0, "research": 0}  # 任务级计数,每次执行重置
@@ -42,7 +51,10 @@ class Pipeline:
                         "attempt": attempt,
                         "agent": agent.name,
                         "output": message.output,
-                        "meta": message.meta,
+                        "meta": {
+                            **message.meta,
+                            "process_log": list(message.meta.get("process_log", [])),
+                        },
                     }
                 )
             if self.verifier is None:
@@ -61,7 +73,9 @@ class Pipeline:
             message.context["revision"] = (
                 f"【{label}】{verdict.get('suggestion', '请修正后重新回答')}"
             )
-        self._archive(task, steps, message.output, message.meta)
+        self.last_steps = steps
+        if self.archive_dir is not None:
+            self._archive(task, steps, message.output, message.meta)
         return message
 
     def _archive(self, task: str, steps: list, output: str, meta: dict = None) -> str:

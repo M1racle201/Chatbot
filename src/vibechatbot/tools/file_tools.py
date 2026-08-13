@@ -1,4 +1,4 @@
-﻿"""文件加载工具：将 Word / txt / PDF 文件输出为纯文本字符串，并支持长文本分块。"""
+"""文件加载工具：将 Word / txt / PDF 文件输出为纯文本字符串，并支持长文本分块。"""
 
 import os
 import re
@@ -173,6 +173,35 @@ def save_file(filename: str, content: str) -> dict:
     return {"filename": filename, "path": path, "chars": len(content)}
 
 
+def _is_within(path: str, directory: str) -> bool:
+    """判断 path 是否位于 directory 目录内（规范化后，防路径穿越）。"""
+    path = os.path.abspath(path)
+    directory = os.path.abspath(directory)
+    return os.path.commonpath([path, directory]) == directory
+
+
+def write_file(path: str, content: str) -> dict:
+    """修改或创建文本文件（覆盖写入）。
+
+    除向量库目录（VECTOR_DB）外，允许写入任意路径（自动创建父目录）；
+    向量库目录无论如何都禁止写入。
+    """
+    path = path.strip().strip('"').strip("'")
+    if not path:
+        return {"error": "路径不能为空"}
+    if _is_within(path, config.VECTOR_DB_DIR):
+        return {"error": "禁止修改向量库目录（VECTOR_DB）下的文件"}
+    try:
+        directory = os.path.dirname(path) or "."
+        os.makedirs(directory, exist_ok=True)
+        updated = os.path.exists(path)
+        with open(path, "w", encoding="utf-8") as file:
+            file.write(content)
+    except OSError as exc:
+        return {"error": f"写入失败: {exc}"}
+    return {"path": path, "chars": len(content), "updated": updated}
+
+
 TOOLS = [
     {
         "name": "load",
@@ -244,5 +273,21 @@ TOOLS = [
         },
         "function": save_file,
     },
+    {
+        "name": "write_file",
+        "description": (
+            "修改或创建文本文件（覆盖写入）；除向量库目录（VECTOR_DB）外"
+            "允许任意路径，自动创建父目录；严禁写入向量库目录；"
+            "用于按用户要求改写已有文件的内容"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "要修改的文件完整路径"},
+                "content": {"type": "string", "description": "写入的新内容（覆盖原文件）"},
+            },
+            "required": ["path", "content"],
+        },
+        "function": write_file,
+    },
 ]
-

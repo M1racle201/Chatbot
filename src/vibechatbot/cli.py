@@ -41,12 +41,13 @@ def task_loop() -> None:
         if verdict.get("exhausted"):
             print("\n⚠ 核查未通过已达上限，以下为强制输出:")
         print(f"结论: {result['output']}")
-        if verdict.get("reason"):
+        attempts = result.get("attempts", {})
+        if not verdict.get("passed") and verdict.get("reason"):
             print(f"核查: {verdict['reason']}")
-        if result.get("attempts"):
+        if attempts.get("rewrite") or attempts.get("research"):
             print(
-                f"打回统计: 复写 {result['attempts']['rewrite']} 次，"
-                f"重搜 {result['attempts']['research']} 次"
+                f"打回统计: 复写 {attempts['rewrite']} 次，"
+                f"重搜 {attempts['research']} 次"
             )
 
 

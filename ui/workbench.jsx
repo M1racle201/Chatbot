@@ -1,7 +1,7 @@
 import React from 'react';
 import {Box, Text} from 'ink';
 import TextInput from 'ink-text-input';
-import {deriveRecentThreads, getTranscriptRows} from './layout.mjs';
+import {SIDEBAR_WIDTH, deriveRecentThreads} from './layout.mjs';
 
 const COLOR = {
   amber: '#F2B84B',
@@ -14,21 +14,15 @@ const COLOR = {
   error: '#F47067',
 };
 
-const MODE_LABEL = {
-  idle: 'Auto',
-  chat: 'Chat',
-  agent: 'Agent',
-  agentic: 'Agentic',
-};
 
-export function Sidebar({items, rows}) {
+export function Sidebar({items}) {
   const recent = deriveRecentThreads(items);
   const threads = recent.length ? recent : ['No recent threads'];
 
   return (
     <Box
-      width={28}
-      height={rows}
+      width={SIDEBAR_WIDTH}
+      flexShrink={0}
       flexDirection="column"
       paddingX={1}
       borderStyle="single"
@@ -71,14 +65,15 @@ export function Sidebar({items, rows}) {
   );
 }
 
-export function WorkspaceHeader({mode, busy, compact}) {
+export function WorkspaceHeader({label = 'Task', busy, compact, model = ''}) {
   const context = compact
-    ? `VibeChatbot · ${MODE_LABEL[mode]}`
-    : `Context: VibeChatbot · ${MODE_LABEL[mode]}`;
+    ? `VibeChatbot · ${label}`
+    : `Context: VibeChatbot · ${label}`;
 
   return (
     <Box
       height={3}
+      flexShrink={0}
       paddingX={2}
       alignItems="center"
       justifyContent="space-between"
@@ -91,6 +86,7 @@ export function WorkspaceHeader({mode, busy, compact}) {
       <Text>
         <Text color={busy ? COLOR.amber : COLOR.cyan}>●</Text>
         {`  ${busy ? 'Agent working' : 'Agent ready'}`}
+        {model ? <Text color={COLOR.muted}>{` · ${model}`}</Text> : null}
       </Text>
       <Text color={COLOR.muted}>{context}</Text>
     </Box>
@@ -134,24 +130,22 @@ export function ResultPanel({text}) {
   );
 }
 
-function Message({item, columns}) {
-  const bodyWidth = Math.max(columns - 2, 20);
-
+function Message({item}) {
   switch (item.kind) {
     case 'user':
       return (
-        <Box flexDirection="column" marginBottom={1} width={columns}>
+        <Box flexDirection="column" marginBottom={1} width="100%">
           <Text bold color={COLOR.amber}>You</Text>
-          <Text color={COLOR.text} wrap="wrap" width={bodyWidth}>
+          <Text color={COLOR.text} wrap="wrap">
             {item.text}
           </Text>
         </Box>
       );
     case 'assistant':
       return (
-        <Box flexDirection="column" marginBottom={1} width={columns}>
+        <Box flexDirection="column" marginBottom={1} width="100%">
           <Text bold color={COLOR.cyan}>Agent</Text>
-          <Text color={COLOR.text} wrap="wrap" width={bodyWidth}>
+          <Text color={COLOR.text} wrap="wrap">
             {item.text}
           </Text>
         </Box>
@@ -177,25 +171,23 @@ function Message({item, columns}) {
   }
 }
 
-export function Transcript({items, stream, status, rows, columns}) {
-  const messageColumns = Math.max(columns - 4, 20);
-
+export function Transcript({items, stream, status}) {
   return (
     <Box
       flexDirection="column"
-      height={getTranscriptRows(rows)}
-      width={columns}
+      flexGrow={1}
+      flexShrink={1}
       overflow="hidden"
       paddingX={2}
       paddingTop={1}
     >
       {items.slice(-60).map((item) => (
-        <Message key={item.key} item={item} columns={messageColumns} />
+        <Message key={item.key} item={item} />
       ))}
       {stream && (
         <Message
           item={{kind: 'assistant', text: `${stream}▌`}}
-          columns={messageColumns}
+         
         />
       )}
       {status && <ToolActivity text={status} busy />}
@@ -203,15 +195,16 @@ export function Transcript({items, stream, status, rows, columns}) {
   );
 }
 
-export function Composer({input, setInput, submit, mode, busy, columns}) {
+export function Composer({input, setInput, submit, label = 'Task', busy}) {
   const placeholder = busy
     ? 'Agent is working...'
     : 'Ask the agent to inspect, build, or explain...';
 
   return (
     <Box
-      width={columns}
+      width="100%"
       height={4}
+      flexShrink={0}
       paddingX={1}
       paddingY={1}
       borderStyle="single"
@@ -225,7 +218,7 @@ export function Composer({input, setInput, submit, mode, busy, columns}) {
           placeholder={placeholder}
         />
       </Box>
-      <Text color={COLOR.muted}>{MODE_LABEL[mode]}{'  '}</Text>
+      <Text color={COLOR.muted}>{label}{'  '}</Text>
       <Text bold color={COLOR.amber}>↗</Text>
     </Box>
   );

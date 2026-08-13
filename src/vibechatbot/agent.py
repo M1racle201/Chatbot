@@ -8,7 +8,6 @@ from vibechatbot import config
 from vibechatbot.tools import TOOL_DEFINITIONS, execute_tool
 
 MAX_AGENT_STEPS = 10
-AGENT_MAX_MESSAGES = 60
 TASK_DIR = config.TASK_DIR
 
 
@@ -19,17 +18,26 @@ class Agent:
     直到给出最终汇报；工具调用过程不输出，仅记录在 TASK JSON 存档中。
     """
 
-    def __init__(self, chat, agent_max_messages: int = AGENT_MAX_MESSAGES):
+    def __init__(self, chat):
         self.chat = chat
-        self.agent_max_messages = agent_max_messages
 
-    def run(self, task: str) -> str:
-        """执行任务：工具循环直到最终汇报，并把任务记录存入 TASK 文件夹。"""
-        agent_messages = self.chat.messages + [{"role": "user", "content": task}]
+    def __init__(self, chat, save_record: bool = True):
+        self.chat = chat
+        self.save_record = save_record  # False 时由 Runtime 统一写会话存档
+        self.last_messages = []  # 最近一次任务的消息链，供会话存档使用
+
+    def run(self, task: str, context: dict = None) -> str:
+        """执行任务：工具循环直到最终汇报；context 携带会话历史等附加上下文。"""
+        agent_messages = [
+            {"role": "system", "content": self.chat.system_prompt},
+        ]
+        history = (context or {}).get("session_history")
+        if history:
+            agent_messages.append({"role": "system", "content": history})
+        agent_messages.append({"role": "user", "content": task})
         for _ in range(MAX_AGENT_STEPS):
-            # 上下文超长时先总结压缩（保留完整消息，不断开 tool 关联）
-            if len(agent_messages) > self.agent_max_messages:
-                agent_messages = self._compress_agent_messages(agent_messages)
+            # 任务内消息按 chat.py 轮次规则管理：超限总结压缩，保留最近轮次
+            agent_messages = self.chat.compress_messages(agent_messages)
             response = self.chat._create_with_retry(
                 model=self.chat.model,
                 messages=agent_messages,
@@ -55,28 +63,15 @@ class Agent:
                     )
                 continue
             reply = message.content or ""
-            self._save_task_record(task, agent_messages, reply)
+            self.last_messages = agent_messages
+            if self.save_record:
+                self._save_task_record(task, agent_messages, reply)
             return reply
         print("已达最大执行步数，任务中断")
-        self._save_task_record(task, agent_messages, "已达最大执行步数，任务中断")
+        self.last_messages = agent_messages
+        if self.save_record:
+            self._save_task_record(task, agent_messages, "已达最大执行步数，任务中断")
         return "已达最大执行步数，任务中断"
-
-    def _compress_agent_messages(self, agent_messages: list) -> list:
-        """agent 上下文超长时：总结进度，保留最近完整消息（避免截断 tool 关联）。"""
-        summary = self.chat._summarize_messages(agent_messages)
-        keep = agent_messages[-(self.chat.keep_recent_rounds * 2):]
-        # 保留段必须从 assistant 消息开始，防止 tool 消息孤立
-        start = next(
-            (index for index, message in enumerate(keep)
-             if message.get("role") == "assistant"),
-            0,
-        )
-        keep = keep[start:]
-        print(f"任务上下文超过 {self.agent_max_messages} 条，已总结进度并保留最近 {len(keep)} 条")
-        return [
-            {"role": "system", "content": self.chat.system_prompt},
-            {"role": "system", "content": "任务进度总结：" + summary},
-        ] + keep
 
     def _save_task_record(self, task: str, messages: list, reply: str) -> None:
         """将任务执行记录保存为 TASK 文件夹下的 JSON 文件。"""

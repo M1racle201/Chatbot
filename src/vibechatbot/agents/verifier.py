@@ -77,7 +77,7 @@ class VerifierAgent(BaseAgent):
                 f"{index}. 来源《{item.get('source')}》:{item.get('content')}"
                 for index, item in enumerate(evidence, 1)
             ]
-            user_content += "\n\n检索原文(结论必须逐条对照以下原文,不得凭常识判断):\n" + "\n".join(parts)
+            user_content += "\n\n检索原文(结论必须逐条对照以下原文,不得仅凭常识判断):\n" + "\n".join(parts)
         messages = [
             {"role": "system", "content": self.verifier_prompt},
             {"role": "user", "content": user_content},

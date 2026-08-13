@@ -1,4 +1,4 @@
-﻿"""DeepSeek 聊天客户端：封装聊天 API 调用与消息管理。"""
+"""DeepSeek 聊天客户端：封装聊天 API 调用与消息管理。"""
 
 import time
 
@@ -83,20 +83,118 @@ class Chat:
             except (RateLimitError, InternalServerError, APITimeoutError) as exc:
                 if attempt >= self.max_retries:
                     raise
+                self._reset_retry_dedup()  # 新流从头比对，跳过已发送前缀
                 self._wait_and_report(exc, attempt)
         return None
 
+    def _dedup(self, new: str, sent: str, offset: int):
+        """跳过 new 中与已发送文本 sent 重叠的前缀（重试重发时去重）。
+
+        返回 (增量文本, 更新后的已发送文本, 新的匹配偏移)。
+        """
+        if offset < len(sent):
+            remaining = sent[offset:]
+            if remaining.startswith(new):
+                return "", sent, offset + len(new)
+            if new.startswith(remaining):
+                return new[len(remaining):], sent, len(sent)
+            return new, sent, len(sent)  # 输出与旧文本不一致，停止跳过
+        return new, sent + new, len(sent) + len(new)
+
+    def _skip_duplicate(self, chunk) -> None:
+        """重试重发时跳过已发送过的文本/工具调用增量（原地修改 chunk）。"""
+        if not chunk.choices:
+            return
+        delta = chunk.choices[0].delta
+        if delta.content:
+            delta.content, self._sent_text, self._sent_offset = self._dedup(
+                delta.content, self._sent_text, self._sent_offset
+            )
+        for call in delta.tool_calls or []:
+            parts = self._sent_calls.setdefault(
+                call.index,
+                {"name": "", "name_off": 0, "args": "", "args_off": 0},
+            )
+            if call.function is None:
+                continue
+            if call.function.name:
+                call.function.name, parts["name"], parts["name_off"] = self._dedup(
+                    call.function.name, parts["name"], parts["name_off"]
+                )
+            if call.function.arguments:
+                call.function.arguments, parts["args"], parts["args_off"] = self._dedup(
+                    call.function.arguments, parts["args"], parts["args_off"]
+                )
+
     def _stream_with_retry(self, **kwargs):
         """流式请求：迭代过程中遇 429/5xx/超时自动重试。"""
+        # 重试去重状态：重试重发时跳过已发送过的文本/工具调用前缀
+        self._sent_text = ""
+        self._sent_offset = 0
+        self._sent_calls = {}
         for attempt in range(self.max_retries + 1):
             try:
                 stream = self.client.chat.completions.create(**kwargs)
-                yield from stream
+                for chunk in stream:
+                    self._skip_duplicate(chunk)
+                    yield chunk
                 return
             except (RateLimitError, InternalServerError, APITimeoutError) as exc:
                 if attempt >= self.max_retries:
                     raise
                 self._wait_and_report(exc, attempt)
+                self._reset_retry_dedup()  # 新流从头比对，跳过已发送前缀
+
+    def _reset_retry_dedup(self) -> None:
+        """重试重发前重置匹配偏移：新流从头比对已发送文本。"""
+        self._sent_offset = 0
+        for parts in self._sent_calls.values():
+            parts["name_off"] = 0
+            parts["args_off"] = 0
+
+    def stream_completion(
+        self,
+        messages: list,
+        tools: list = None,
+        on_chunk=None,
+    ) -> tuple:
+        """流式请求：逐块回调文本增量，聚合完整文本与工具调用。
+
+        返回 (content, tool_calls)：content 为完整回复文本；tool_calls 为
+        聚合后的工具调用列表（与 model_dump 的 tool_calls 结构一致），无则为空列表。
+        """
+        stream = self._stream_with_retry(
+            model=self.model, messages=messages, tools=tools, stream=True
+        )
+
+        content_parts = []
+        tool_calls = {}
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if delta.content:
+                content_parts.append(delta.content)
+                if on_chunk:
+                    on_chunk(delta.content)
+            for call in delta.tool_calls or []:
+                entry = tool_calls.setdefault(
+                    call.index,
+                    {
+                        "id": "",
+                        "type": "function",
+                        "function": {"name": "", "arguments": ""},
+                    },
+                )
+                if call.id:
+                    entry["id"] = call.id
+                if call.function:
+                    if call.function.name:
+                        entry["function"]["name"] += call.function.name
+                    if call.function.arguments:
+                        entry["function"]["arguments"] += call.function.arguments
+        ordered = [tool_calls[index] for index in sorted(tool_calls)]
+        return "".join(content_parts), ordered
 
     def _summarize_messages(self, messages: list) -> str:
         """调用模型简略总结给定消息列表。"""
@@ -123,6 +221,43 @@ class Chat:
             print(f"对话轮次超过 {self.max_rounds}，已总结并保留最近 {self.keep_recent_rounds} 轮")
             return True
         return False
+
+    def compress_messages(
+        self,
+        messages: list,
+        max_rounds: int = None,
+        keep_recent_rounds: int = None,
+    ) -> list:
+        """按 chat.py 的轮次规则压缩消息列表（供任务内复用）。
+
+        超过 max_rounds 轮时：总结全部消息，保留 system 提示词 + 总结 +
+        最近 keep_recent_rounds 轮；压缩结果从 assistant 消息开始截取，
+        避免 tool 消息孤立。不写盘，任务结束即弃。
+        """
+        max_rounds = self.max_rounds if max_rounds is None else max_rounds
+        keep_recent_rounds = (
+            self.keep_recent_rounds
+            if keep_recent_rounds is None
+            else keep_recent_rounds
+        )
+        rounds = sum(1 for m in messages if m.get("role") != "system") // 2
+        if rounds <= max_rounds:
+            return messages
+        summary = self._summarize_messages(messages)
+        compressed = self.history.compress(
+            messages, summary, keep_recent_rounds=keep_recent_rounds
+        )
+        # 保留段可能从 tool 消息开头（其 assistant 被截掉），跳过孤立 tool，
+        # 避免 API 校验失败；system 前缀（提示词 + 总结）保留
+        prefix_end = 0
+        while prefix_end < len(compressed) and compressed[prefix_end].get("role") == "system":
+            prefix_end += 1
+        tool_end = prefix_end
+        while tool_end < len(compressed) and compressed[tool_end].get("role") == "tool":
+            tool_end += 1
+        if tool_end > prefix_end:
+            return compressed[:prefix_end] + compressed[tool_end:]
+        return compressed
 
     def chat(self, user_input: str) -> None:
         """基础聊天：流式打印回复到终端，不直接返回整段文字。"""

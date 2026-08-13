@@ -35,7 +35,7 @@ DEFAULT_EXECUTOR_PROMPT = """你是主题执行器,负责基于向量知识库�
 - 回答时标注信息来源文件名(如:根据《xxx.pdf》)
 - 检索结果不足时明确说明"知识库中没有相关内容",不要猜测
 - 读取文件用 load,文档入库用 add_documents,输出文件用 save_file
-- 文件只允许保存到 OUTPUT 目录,不要执行删除向量库等危险操作
+- write_file 可写任意路径(自动创建父目录),但严禁写入向量库目录(VECTOR_DB)
 - 完成时输出最终结论,不要输出过程描述"""
 
 
@@ -50,6 +50,27 @@ def _default_tool_executor():
     from vibechatbot.tools import execute_tool
 
     return execute_tool
+
+
+class _StreamReply:
+    """流式聚合后的回复对象：兼容 response.choices[0].message 的接口。"""
+
+    def __init__(self, content: str, tool_calls: list):
+        self.content = content
+        self.tool_calls = tool_calls
+
+    @property
+    def choices(self) -> list:
+        """Simulate response.choices[0].message access path."""
+        choice = type("Choice", (), {"message": self})()
+        return [choice]
+
+    def model_dump(self) -> dict:
+        return {
+            "role": "assistant",
+            "content": self.content or None,
+            "tool_calls": self.tool_calls,
+        }
 
 
 class ExecutorAgent(BaseAgent):
@@ -101,22 +122,35 @@ class ExecutorAgent(BaseAgent):
         else:
             if self.tools is None:
                 self.tools = _default_tools()
-            result = self.chat._create_with_retry(
-                model=self.chat.model, messages=messages, tools=self.tools
-            )
+            if self.stream_callback is not None:
+                # 执行器是唯一向用户输出结论的 agent，最终结论才需要流式
+                content, tool_calls = self.chat.stream_completion(
+                    messages, tools=self.tools, on_chunk=self.stream_callback
+                )
+                result = _StreamReply(content, tool_calls or None)
+            else:
+                result = self.chat._create_with_retry(
+                    model=self.chat.model, messages=messages, tools=self.tools
+                )
         if inspect.isawaitable(result):
             result = await result
         return result
 
     async def _process(self, message: AgentMessage) -> str:
         agent_messages = [{"role": "system", "content": self.executor_prompt}]
+        history = message.context.get("session_history")
+        if history:
+            agent_messages.append({"role": "system", "content": history})
         agent_messages.append(
             {"role": "user", "content": message.output or message.task}
         )
         snapshots = []
         evidence = []
         for _ in range(self.max_steps):
-            if len(agent_messages) > self.max_messages:
+            if self.chat is not None:
+                # 真实运行时：任务内消息按 chat.py 轮次规则管理
+                agent_messages = self.chat.compress_messages(agent_messages)
+            elif len(agent_messages) > self.max_messages:
                 agent_messages = self._compress(agent_messages)
             response = await self._call_llm(agent_messages)
             reply = response.choices[0].message

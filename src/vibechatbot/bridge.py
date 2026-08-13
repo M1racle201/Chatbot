@@ -53,11 +53,17 @@ class Bridge:
         self.chat = chat
         self.run_task = run_task or (lambda content: {"route": "fast", "output": ""})
         self._stdout = None
+        self._streamed = False  # 当前任务是否发过流式文本（UI 据此避免结果重复显示）
 
     # ---------- 事件 ----------
     def _emit(self, **event):
         self._stdout.write(json.dumps(event, ensure_ascii=False) + "\n")
         self._stdout.flush()
+
+    def emit_stream(self, content: str) -> None:
+        """把 agent 的流式文本增量转发为 stream 事件（供前端实时显示）。"""
+        self._emit(type="stream", content=content)
+        self._streamed = True
 
     def _event_stream(self):
         """把后端 print 输出重定向为 log 事件（防止污染 JSON 协议流）。"""
@@ -74,7 +80,7 @@ class Bridge:
                 stream.reconfigure(encoding="utf-8")
             except (AttributeError, ValueError):
                 pass
-        self._emit(type="ready")
+        self._emit(type="ready", model=getattr(self.chat, "model", ""))
         for raw in stdin:
             line = raw.strip()
             if not line:
@@ -111,16 +117,20 @@ class Bridge:
     def _handle_task(self, content: str) -> None:
         """统一任务模式：快速通道或复写→执行→核查，结果以 result 事件返回。"""
         self._emit(type="user", content=content)
+        self._streamed = False  # 每个任务独立统计是否产生流式文本
         self._emit(type="status", text="任务执行中...")
         try:
             with self._event_stream():
-                result = _run_sync_or_async(self.run_task, content)
+                result = _run_sync_or_async(
+                    self.run_task, content, self.emit_stream
+                )
             self._emit(
                 type="result",
                 content=result.get("output", ""),
                 route=result.get("route", "pipeline"),
                 verdict=result.get("verdict", {}),
                 attempts=result.get("attempts", {}),
+                streamed=self._streamed,
             )
         except Exception as exc:
             self._emit(type="error", message=str(exc))

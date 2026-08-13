@@ -23,7 +23,7 @@ class FakeChat:
 class FakeRunTask:
     """按任务返回结构化结果的 fake 统一任务入口。"""
 
-    def __call__(self, task):
+    def __call__(self, task, stream_callback=None):
         if task == "保存文件":
             return {"route": "fast", "output": "快速通道结论"}
         return {
@@ -32,6 +32,15 @@ class FakeRunTask:
             "verdict": {"passed": False, "reason": "缺少依据", "exhausted": True},
             "attempts": {"rewrite": 1, "research": 2},
         }
+
+
+class FakeStreamRunTask:
+    """带流式回调的 fake：任务执行中逐块输出文本。"""
+
+    def __call__(self, task, stream_callback=None):
+        if stream_callback:
+            stream_callback("chunk-a"); stream_callback("chunk-b")
+        return {"route": "fast", "output": "done"}
 
 
 def run_bridge(commands, run_task=None):
@@ -47,7 +56,7 @@ def run_bridge(commands, run_task=None):
 class TestBridge(unittest.TestCase):
     def test_ready_on_start(self):
         events = run_bridge([])
-        self.assertEqual(events, [{"type": "ready"}])
+        self.assertEqual(events, [{"type": "ready", "model": ""}])
 
     def test_task_fast_path_emits_result(self):
         events = run_bridge([{"type": "task", "content": "保存文件"}])
@@ -55,6 +64,7 @@ class TestBridge(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["content"], "快速通道结论")
         self.assertEqual(results[0]["route"], "fast")
+        self.assertIs(results[0]["streamed"], False)  # 快速通道不流式
 
     def test_task_full_flow_emits_verdict_and_attempts(self):
         events = run_bridge([{"type": "task", "content": "知识库问答"}])
@@ -89,7 +99,7 @@ class TestBridge(unittest.TestCase):
         bridge = Bridge(chat=FakeChat(), run_task=FakeRunTask())
         bridge.run(stdin=stdin, stdout=stdout)
         lines = [json.loads(line) for line in stdout.getvalue().strip().splitlines()]
-        self.assertEqual(lines[0], {"type": "ready"})
+        self.assertEqual(lines[0], {"type": "ready", "model": ""})
         errors = [e for e in lines if e["type"] == "error"]
         self.assertEqual(len(errors), 1)
         self.assertIn("无法解析命令", errors[0]["message"])
@@ -104,6 +114,17 @@ class TestBridge(unittest.TestCase):
         events = run_bridge([{"type": "exit"}, {"type": "task", "content": "x"}])
         kinds = [e["type"] for e in events]
         self.assertNotIn("user", kinds)
+
+    def test_task_stream_chunks_forwarded(self):
+        events = run_bridge(
+            [{"type": "task", "content": "save file"}], run_task=FakeStreamRunTask()
+        )
+        streams = [e for e in events if e["type"] == "stream"]
+        self.assertEqual([e["content"] for e in streams], ["chunk-a", "chunk-b"])
+        results = [e for e in events if e["type"] == "result"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["content"], "done")
+        self.assertIs(results[0]["streamed"], True)  # 发过流式文本
 
 
 if __name__ == "__main__":

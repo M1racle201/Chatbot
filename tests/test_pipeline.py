@@ -255,6 +255,9 @@ class TestPipeline(unittest.TestCase):
             self.assertEqual(data["steps"][0]["agent"], "a1")
             self.assertEqual(data["steps"][0]["output"], "1:hello|")
             self.assertEqual(data["steps"][1]["agent"], "a2")
+            # 每个步骤应记录自己的 meta，而不是共享最后一个 agent 的 meta
+            self.assertEqual(data["steps"][0]["meta"]["agent"], "a1")
+            self.assertEqual(data["steps"][1]["meta"]["agent"], "a2")
             self.assertEqual(data["output"], "2:1:hello||")
 
     def test_error_propagates(self):

@@ -41,21 +41,21 @@ class TestInkUiLayout(unittest.TestCase):
 
     def test_app_integrates_wide_and_compact_layouts(self):
         self.assertIn("isWideLayout(columns)", APP_SOURCE)
-        self.assertIn("getWorkspaceColumns(columns)", APP_SOURCE)
+        self.assertIn("flexGrow={1}", APP_SOURCE)
         self.assertIn("<Sidebar", APP_SOURCE)
         self.assertIn("<WorkspaceHeader", APP_SOURCE)
 
-    def test_existing_command_paths_are_preserved(self):
+    def test_unified_task_mode_and_commands(self):
         for command in (
-            "/chat",
-            "/agent",
-            "/agentic",
             "/clear_history",
             "/clear_memory",
+            "/clear_memmory",
             "/exit",
         ):
             with self.subTest(command=command):
                 self.assertIn(command, APP_SOURCE)
+        self.assertIn("type: 'task'", APP_SOURCE)
+        self.assertNotIn("/chat", APP_SOURCE)
 
 
 if __name__ == "__main__":

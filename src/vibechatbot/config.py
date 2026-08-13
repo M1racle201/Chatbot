@@ -36,6 +36,12 @@ OUTPUT_DIR = os.path.join(DATA_DIR, "OUTPUT")
 VECTOR_DB_DIR = os.path.join(DATA_DIR, "VECTOR_DB")
 HISTORY_FILE = os.path.join(CHAT_DIR, "history.json")
 
+# ---- 文件写入白名单（write_file 工具）----
+# VIBECHAT_WRITE_DIRS 用分号分隔多个目录；OUTPUT 目录始终允许
+WRITE_DIRS = [
+    d.strip() for d in os.getenv("VIBECHAT_WRITE_DIRS", "").split(";") if d.strip()
+]
+
 # ---- 提示词目录 ----
 PROMPT_DIR = os.path.join(PROJECT_ROOT, "prompt")
 PROMPT_FILE = os.path.normpath(

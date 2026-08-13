@@ -6,10 +6,6 @@ export function isWideLayout(columns) {
   return columns >= WIDE_LAYOUT_COLUMNS;
 }
 
-export function getWorkspaceColumns(columns) {
-  return isWideLayout(columns) ? columns - SIDEBAR_WIDTH : columns;
-}
-
 export function deriveRecentThreads(items, limit = MAX_RECENT_THREADS) {
   return items
     .filter((item) => item.kind === 'user' && String(item.text || '').trim())
@@ -18,6 +14,3 @@ export function deriveRecentThreads(items, limit = MAX_RECENT_THREADS) {
     .map((item) => String(item.text).replace(/\s+/g, ' ').trim());
 }
 
-export function getTranscriptRows(rows) {
-  return Math.max(rows - (rows < 24 ? 7 : 8), 6);
-}

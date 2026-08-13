@@ -53,6 +53,24 @@ def tool_call_response(name, arguments, call_id="call_1"):
     return FakeResponse(message)
 
 
+class FakeStreamChat:
+    """fake chat：按顺序返回 (content, tool_calls)，触发流式回调。"""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def compress_messages(self, messages):
+        return messages
+
+    def stream_completion(self, messages, tools=None, on_chunk=None):
+        self.calls.append((messages, tools))
+        content, tool_calls = self.responses.pop(0)
+        if content and on_chunk:
+            on_chunk(content)
+        return content, tool_calls
+
+
 class TestExecutorAgent(unittest.TestCase):
     def test_direct_reply(self):
         llm = SequentialLLM([FakeResponse(FakeMessage(content="结论文本"))])
@@ -250,6 +268,38 @@ class TestExecutorAgent(unittest.TestCase):
     def test_no_llm_and_no_chat_raises(self):
         with self.assertRaises(ValueError):
             ExecutorAgent()
+
+    def test_stream_callback_used_when_chat_configured(self):
+        fake_chat = FakeStreamChat(
+            [
+                (
+                    "",
+                    [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "query_documents",
+                                "arguments": '{"query": "x"}',
+                            },
+                        }
+                    ],
+                ),
+                ("final-stream", []),
+            ]
+        )
+        chunks = []
+        agent = ExecutorAgent(
+            chat=fake_chat,
+            tools=[],
+            tool_executor=lambda name, arguments: '{"ok": true}',
+        )
+        agent.stream_callback = chunks.append
+        message = asyncio.run(agent.run(AgentMessage(task="问题")))
+        self.assertEqual(message.output, "final-stream")
+        self.assertEqual(chunks, ["final-stream"])
+        # 流式路径把工具定义传给了 chat
+        self.assertEqual(fake_chat.calls[0][1], [])
 
 
 if __name__ == "__main__":

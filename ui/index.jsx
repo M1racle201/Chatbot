@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import readline from 'node:readline';
 import path from 'node:path';
-import {getWorkspaceColumns, isWideLayout} from './layout.mjs';
+import {isWideLayout} from './layout.mjs';
 import {
   Composer,
   Sidebar,
@@ -22,12 +22,6 @@ const bridgePath =
   ].find(existsSync) ?? path.join(process.cwd(), 'bridge.py');
 const pythonCmd = process.env.VIBECHAT_PYTHON || 'python';
 
-const MODE_LABEL = {
-  idle: '未选择模式',
-  chat: '聊天',
-  agent: '任务',
-  agentic: '智能任务',
-};
 
 function createBridge(onEvent, onClose, onError) {
   const child = spawn(pythonCmd, [bridgePath], {
@@ -71,12 +65,12 @@ function useTerminalSize() {
 }
 
 const App = () => {
-  const [mode, setMode] = useState('idle');
   const [input, setInput] = useState('');
   const [items, setItems] = useState([]); // {key, kind, text}
   const [stream, setStream] = useState('');
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
+  const [model, setModel] = useState('');
   const bridgeRef = useRef(null);
   const keyRef = useRef(0);
 
@@ -113,16 +107,24 @@ const App = () => {
             setStatus(event.text);
             break;
           case 'result': {
-            pushItem('result', event.content);
+            setStream((s) => {
+              if (s.trim()) pushItem('assistant', s);
+              return '';
+            });
+            // 流式已展示完整结论时不再重复 Result 面板；无流式任务用面板兜底
+            if (!event.streamed) pushItem('result', event.content);
             if (event.verdict) {
               const {reason, exhausted} = event.verdict;
               if (exhausted) pushItem('notice', '核查未通过已达上限，以上为强制输出');
-              if (reason) pushItem('log', `核查: ${reason}`);
+              if (!event.verdict.passed && reason)
+                pushItem('log', `核查: ${reason}`);
             }
-            if (event.attempts) {
+            const attempts = event.attempts || {};
+            const hasRetries = (attempts.rewrite || 0) + (attempts.research || 0) > 0;
+            if (hasRetries) {
               pushItem(
                 'log',
-                `打回统计: 复写 ${event.attempts.rewrite} 次，重搜 ${event.attempts.research} 次`
+                `打回统计: 复写 ${attempts.rewrite} 次，重搜 ${attempts.research} 次`
               );
             }
             setBusy(false);
@@ -136,7 +138,8 @@ const App = () => {
             setStream('');
             break;
           case 'ready':
-            pushItem('notice', '后端已就绪，输入 /chat /agent /agentic 选择模式');
+            pushItem('notice', '后端已就绪，输入任务即可执行');
+            setModel(event.model || '');
             break;
           default:
             break;
@@ -174,48 +177,29 @@ const App = () => {
       return;
     }
     if (trimmed.startsWith('/')) {
-      const name = trimmed.slice(1).toLowerCase();
-      if (name in MODE_LABEL && name !== 'idle') {
-        setMode(name);
-        setStream('');
-        pushItem('notice', `已进入${MODE_LABEL[name]}模式，输入 /exit 退出`);
-        return;
-      }
-      pushItem('notice', '可用命令: /chat /agent /agentic /clear_history /clear_memory /exit');
-      return;
-    }
-    if (mode === 'idle') {
-      pushItem('notice', '先输入 /chat /agent /agentic 选择模式');
+      pushItem('notice', '可用命令: /clear_history /clear_memory /exit');
       return;
     }
     setBusy(true);
     setStream('');
-    bridgeRef.current?.send({type: mode, content: trimmed});
+    bridgeRef.current?.send({type: 'task', content: trimmed});
   };
 
-  const {columns, rows} = useTerminalSize();
+  const {columns} = useTerminalSize();
   const wide = isWideLayout(columns);
-  const workspaceColumns = getWorkspaceColumns(columns);
 
   return (
-    <Box width={columns} height={rows}>
-      {wide && <Sidebar items={items} rows={rows} />}
-      <Box width={workspaceColumns} height={rows} flexDirection="column">
-        <WorkspaceHeader mode={mode} busy={busy} compact={!wide} />
-        <Transcript
-          items={items}
-          stream={stream}
-          status={status}
-          rows={rows}
-          columns={workspaceColumns}
-        />
+    <Box width="100%" height="100%" flexDirection="row">
+      {wide && <Sidebar items={items} />}
+      <Box flexGrow={1} minWidth={0} flexDirection="column">
+<WorkspaceHeader label="Task" busy={busy} compact={!wide} model={model} />
+        <Transcript items={items} stream={stream} status={status} />
         <Composer
           input={input}
           setInput={setInput}
           submit={submit}
-          mode={mode}
+          label="Task"
           busy={busy}
-          columns={workspaceColumns}
         />
       </Box>
     </Box>
