@@ -31,14 +31,17 @@ class Pipeline:
 
     async def run(
         self, task: str, context: dict = None, stream_callback=None,
+        step_callback=None,
     ) -> AgentMessage:
         """执行整条流水线;核查不通过时重试闭环,返回最终 AgentMessage。
 
         context: 可选的共享上下文(如会话历史),作为 AgentMessage.context 初值。
         stream_callback: 可选,把各 agent 的流式文本增量转发(如 UI 实时显示)。
+        step_callback: 可选,思考链步骤回调(stage, content),供 UI 展示过程。
         """
         for agent in self.agents:
             agent.stream_callback = stream_callback
+            agent.step_callback = step_callback
         message = AgentMessage(task=task, context=dict(context or {}))
         steps = []
         attempt = 0
@@ -57,10 +60,16 @@ class Pipeline:
                         },
                     }
                 )
+                if step_callback is not None and agent.name == "rewriter":
+                    step_callback(
+                        "rewriter", f"复写后任务: {message.output[:120]}"
+                    )
             if self.verifier is None:
                 break
             verdict = message.meta.get("verdict")
             if verdict is None or verdict.get("passed"):
+                if step_callback is not None:
+                    step_callback("verify_pass", "核查通过")
                 break
             action = verdict.get("action", "rewrite")
             self.attempts[action] = self.attempts.get(action, 0) + 1
@@ -70,6 +79,12 @@ class Pipeline:
             attempt += 1
             message.output = ""
             label = "复写打回" if action == "rewrite" else "检索打回"
+            if step_callback is not None:
+                reason = verdict.get("reason") or verdict.get("suggestion") or "请修正"
+                step_callback(
+                    "verify_reject", f"核查打回({label}): {reason[:120]}"
+                )
+                step_callback("retry", f"第 {attempt} 轮重试")
             message.context["revision"] = (
                 f"【{label}】{verdict.get('suggestion', '请修正后重新回答')}"
             )

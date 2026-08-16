@@ -5,7 +5,7 @@ import json
 import unittest
 
 from vibechatbot.agents.base import AgentMessage
-from vibechatbot.agents.executor import ExecutorAgent
+from vibechatbot.agents.executor import ExecutorAgent, _tool_result_step_text
 
 
 class FakeMessage:
@@ -72,6 +72,19 @@ class FakeStreamChat:
 
 
 class TestExecutorAgent(unittest.TestCase):
+    def test_tool_result_step_text_keeps_head_and_tail(self):
+        payload = {
+            "exit_code": 0,
+            "stdout": "\n".join(f"line-{i}" for i in range(500)),
+            "stderr": "",
+        }
+        text = _tool_result_step_text(json.dumps(payload, ensure_ascii=False))
+        self.assertIn("line-0", text)
+        self.assertIn("line-499", text)
+        self.assertIn("exit_code: 0", text)
+        self.assertIn("中间省略", text)
+        self.assertLessEqual(len(text), 1640)
+
     def test_direct_reply(self):
         llm = SequentialLLM([FakeResponse(FakeMessage(content="结论文本"))])
         agent = ExecutorAgent(llm=llm)

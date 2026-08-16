@@ -29,10 +29,14 @@ class FakePipeline:
         self.last_steps = [{"agent": "fake"}]
         self.last_context = None
 
-    async def run(self, task, context=None, stream_callback=None):
+    async def run(
+        self, task, context=None, stream_callback=None, step_callback=None
+    ):
         self.last_context = context
         if stream_callback:
             stream_callback("streaming")
+        if step_callback:
+            step_callback("verify_pass", "核查通过")
         return AgentMessage(
             task=task,
             output="流水线候选结论",
@@ -91,6 +95,18 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("最终结论", context["session_history"])
         # 当前任务本身不进入上下文，只有之前的对话
         self.assertNotIn("修改文件", context["session_history"])
+
+    def test_step_callback_forwarded_to_pipeline(self):
+        runtime = self._make_runtime(simple_route=False)
+        steps = []
+        runtime.run_task("知识库问答", step_callback=lambda s, c: steps.append((s, c)))
+        self.assertIn("verify_pass", [s for s, _ in steps])
+
+    def test_fast_path_emits_step(self):
+        runtime = self._make_runtime(simple_route=True)
+        steps = []
+        runtime.run_task("保存文件", step_callback=lambda s, c: steps.append((s, c)))
+        self.assertEqual(steps, [("fast", "快速通道：直接执行工具任务")])
 
 
 if __name__ == "__main__":

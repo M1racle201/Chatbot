@@ -8,6 +8,7 @@ import {
   Sidebar,
   Transcript,
   WorkspaceHeader,
+  parseSgrMouseSequence,
 } from './workbench.jsx';
 
 const ITEMS = [
@@ -61,4 +62,151 @@ test('compact render hides the sidebar but keeps project context', () => {
   assert.match(frame, /Agent ready/);
   assert.match(frame, /Ask the agent to inspect, build, or explain/);
   assert.ok(frame.split('\n').length <= 24);
+});
+
+test('parses SGR mouse wheel sequences', () => {
+  assert.deepEqual(parseSgrMouseSequence('\x1b[<64;40;12M'), {
+    button: 64,
+    x: 40,
+    y: 12,
+    action: 'M',
+  });
+  assert.deepEqual(parseSgrMouseSequence('\x1b[<65;40;12m'), {
+    button: 65,
+    x: 40,
+    y: 12,
+    action: 'm',
+  });
+  assert.equal(parseSgrMouseSequence('\x1b[A'), null);
+});
+
+test('sidebar shows one title derived from the first user message', () => {
+  const items = [
+    {key: 1, kind: 'user', text: '请帮我查看项目结构'},
+    {key: 2, kind: 'assistant', text: '正在分析...'},
+    {key: 3, kind: 'user', text: '第二个任务'},
+  ];
+  const frame = renderToString(<Sidebar items={items} />, {
+    columns: 120,
+    rows: 24,
+  });
+
+  assert.match(frame, /查看项目结构/);
+  assert.doesNotMatch(frame, /第二个任务/);
+});
+
+test('step items render chain-of-thought entries', () => {
+  const steps = [
+    {key: 1, kind: 'step', stage: 'rewriter', text: '复写后任务: 检查文件'},
+    {key: 2, kind: 'step', stage: 'tool', text: 'load(x.pdf)'},
+    {key: 3, kind: 'step', stage: 'tool_result', text: '{"content": "..."}'},
+    {key: 4, kind: 'step', stage: 'verify_reject', text: '核查打回(复写打回): 缺少依据'},
+    {key: 5, kind: 'step', stage: 'retry', text: '第 1 轮重试'},
+    {key: 6, kind: 'step', stage: 'verify_pass', text: '核查通过'},
+    {key: 7, kind: 'step', stage: 'fast', text: '快速通道：直接执行工具任务'},
+  ];
+  const frame = renderToString(
+    <Transcript items={steps} stream="" status="" />,
+    {columns: 120, rows: 30}
+  );
+
+  assert.match(frame, /思考 · 任务复写/);
+  assert.match(frame, /复写后任务/);
+  assert.match(frame, /Tool call · load/);
+  assert.match(frame, /x\.pdf/);
+  assert.match(frame, /Tool result/);
+  assert.match(frame, /核查打回/);
+  assert.match(frame, /第 1 轮重试/);
+  assert.match(frame, /核查通过/);
+  assert.match(frame, /快速通道/);
+});
+
+test('long tool results do not overlap following steps', () => {
+  const longBody = `这是一段很长的工具返回内容，用来验证换行后不会覆盖后续步骤。${'A'.repeat(300)}`;
+  const items = [
+    {key: 1, kind: 'step', stage: 'tool', text: 'load(first.txt)', tool: 'load'},
+    {key: 2, kind: 'step', stage: 'tool_result', text: longBody, tool: 'load'},
+    {key: 3, kind: 'step', stage: 'tool', text: 'load(second.txt)', tool: 'load'},
+    {key: 4, kind: 'assistant', text: '最终回复已生成'},
+  ];
+  const frame = renderToString(
+    <Transcript items={items} stream="" status="" columns={80} />,
+    {columns: 80, rows: 12}
+  );
+
+  // 最新内容应留在可视区域底部，而不是只显示最旧的工具结果。
+  assert.match(frame, /Tool call · load/);
+  assert.match(frame, /最终回复已生成/);
+  const lines = frame.split('\n');
+  for (const line of lines) {
+    assert.ok(
+      !(line.includes('Tool call') && line.includes('AAAA')),
+      `工具步骤与长文本发生重叠: ${line}`
+    );
+    assert.ok(
+      !(line.includes('Tool result') && line.includes('AAAA')),
+      `工具结果与长文本发生重叠: ${line}`
+    );
+  }
+});
+
+test('transcript viewport pins to the latest messages', () => {
+  const items = Array.from({length: 30}, (_, index) => ({
+    key: index,
+    kind: 'assistant',
+    text: `历史消息 ${index}`,
+  }));
+  const frame = renderToString(
+    <Box flexDirection="column" height={12}>
+      <Transcript items={items} stream="" status="" columns={80} />
+    </Box>,
+    {columns: 80, rows: 12}
+  );
+
+  assert.match(frame, /历史消息 29/);
+  assert.doesNotMatch(frame, /历史消息 0/);
+});
+
+test('composer collapses oversized pasted text into a line/row summary', () => {
+  const hugeInput = '这是一段用来测试大量粘贴内容的文字。'.repeat(80);
+  const frame = renderToString(
+    <Composer
+      input={hugeInput}
+      setInput={() => {}}
+      submit={() => {}}
+      label="Task"
+      busy={false}
+      columns={80}
+      maxHeight={5}
+    />,
+    {columns: 80, rows: 12}
+  );
+
+  assert.match(frame, /\[\d+ lines \* \d+ rows\]/);
+  assert.match(frame, /内容过多，已折叠显示/);
+  assert.doesNotMatch(frame, /大量粘贴内容的文字。这是一段/);
+  assert.ok(frame.split('\n').length <= 5);
+});
+
+test('composer grows vertically when input wraps to multiple lines', () => {
+  const longInput =
+    '这是一段很长的输入内容，用来验证输入框在终端宽度不足时会自动换行，而不是超出边框。';
+  const frame = renderToString(
+    <Composer
+      input={longInput}
+      setInput={() => {}}
+      submit={() => {}}
+      label="Task"
+      busy={false}
+      columns={80}
+      maxHeight={10}
+    />,
+    {columns: 80, rows: 12}
+  );
+
+  const lines = frame.split('\n');
+  assert.ok(lines.length >= 4);
+  assert.ok(lines.length <= 10);
+  assert.match(frame, /很长/);
+  assert.match(frame, /边框/);
 });

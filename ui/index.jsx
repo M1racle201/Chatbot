@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {Box, render} from 'ink';
+import {Box, render, useStdout} from 'ink';
 import {spawn} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import readline from 'node:readline';
@@ -21,6 +21,32 @@ const bridgePath =
     path.join(entryDir, '..', 'bridge.py'),
   ].find(existsSync) ?? path.join(process.cwd(), 'bridge.py');
 const pythonCmd = process.env.VIBECHAT_PYTHON || 'python';
+
+
+function useTerminalSize() {
+  const {stdout} = useStdout();
+  const getSize = () => ({
+    columns: stdout.columns || 80,
+    rows: stdout.rows || 24,
+  });
+  const [size, setSize] = useState(getSize);
+
+  useEffect(() => {
+    const update = () => {
+      setSize((current) => {
+        const next = getSize();
+        return next.columns === current.columns && next.rows === current.rows
+          ? current
+          : next;
+      });
+    };
+    stdout.on?.('resize', update);
+    update();
+    return () => stdout.off?.('resize', update);
+  }, [stdout]);
+
+  return size;
+}
 
 
 function createBridge(onEvent, onClose, onError) {
@@ -47,22 +73,6 @@ function createBridge(onEvent, onClose, onError) {
   };
 }
 
-function useTerminalSize() {
-  const getSize = () => ({
-    columns: process.stdout.columns || 80,
-    rows: process.stdout.rows || 24,
-  });
-  const [size, setSize] = useState(getSize);
-
-  useEffect(() => {
-    const update = () => setSize(getSize());
-    process.stdout.on?.('resize', update);
-    update();
-    return () => process.stdout.off?.('resize', update);
-  }, []);
-
-  return size;
-}
 
 const App = () => {
   const [input, setInput] = useState('');
@@ -74,9 +84,9 @@ const App = () => {
   const bridgeRef = useRef(null);
   const keyRef = useRef(0);
 
-  const pushItem = (kind, text) => {
+  const pushItem = (kind, text, meta = {}) => {
     const key = ++keyRef.current;
-    setItems((prev) => [...prev, {key, kind, text}]);
+    setItems((prev) => [...prev, {key, kind, text, ...meta}]);
   };
 
   useEffect(() => {
@@ -99,6 +109,12 @@ const App = () => {
             break;
           case 'log':
             pushItem(event.line.trim() ? 'log' : 'spacer', event.line);
+            break;
+          case 'step':
+            pushItem('step', event.content, {
+              stage: event.stage,
+              tool: event.tool || '',
+            });
             break;
           case 'notice':
             pushItem('notice', event.content);
@@ -157,6 +173,7 @@ const App = () => {
     };
   }, []);
 
+
   const submit = (value) => {
     setInput('');
     const trimmed = value.trim();
@@ -185,21 +202,33 @@ const App = () => {
     bridgeRef.current?.send({type: 'task', content: trimmed});
   };
 
-  const {columns} = useTerminalSize();
+  // 用 React state 订阅终端尺寸变化，交给 Ink 的 log-update 清理旧帧。
+  // 自己直接写 ANSI 清屏会破坏 Ink 内部的光标/行数状态，缩放时反而会重叠或空白。
+  const {columns, rows} = useTerminalSize();
   const wide = isWideLayout(columns);
 
   return (
-    <Box width="100%" height="100%" flexDirection="row">
+    // 根节点高度固定为终端行数，让 Ink 进入全屏渲染路径：
+    // 终端缩放后每次重绘都会整屏清除再绘制，避免残留旧帧造成内容重叠。
+    <Box width="100%" height={rows} flexDirection="row">
       {wide && <Sidebar items={items} />}
       <Box flexGrow={1} minWidth={0} flexDirection="column">
-<WorkspaceHeader label="Task" busy={busy} compact={!wide} model={model} />
-        <Transcript items={items} stream={stream} status={status} />
+        <WorkspaceHeader label="Task" busy={busy} compact={!wide} model={model} />
+        <Transcript
+          items={items}
+          stream={stream}
+          status={status}
+          columns={columns}
+          wide={wide}
+        />
         <Composer
           input={input}
           setInput={setInput}
           submit={submit}
           label="Task"
           busy={busy}
+          columns={columns}
+          maxHeight={Math.max(3, rows - 3)}
         />
       </Box>
     </Box>
@@ -208,4 +237,4 @@ const App = () => {
 
 render(<App />);
 
-export default App;
+export default App

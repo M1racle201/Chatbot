@@ -45,6 +45,14 @@ class TestInkUiLayout(unittest.TestCase):
         self.assertIn("<Sidebar", APP_SOURCE)
         self.assertIn("<WorkspaceHeader", APP_SOURCE)
 
+    def test_app_resize_uses_ink_state_and_full_screen_redraw(self):
+        # 缩放时不能绕过 Ink 直接写 ANSI 清屏，否则会破坏 Ink 内部状态造成重叠/空白。
+        self.assertIn("function useTerminalSize()", APP_SOURCE)
+        self.assertIn("useStdout", APP_SOURCE)
+        self.assertIn("stdout.on?.('resize', update)", APP_SOURCE)
+        self.assertIn("height={rows}", APP_SOURCE)
+        self.assertNotIn(r"\x1b[2J", APP_SOURCE)
+
     def test_unified_task_mode_and_commands(self):
         for command in (
             "/clear_history",

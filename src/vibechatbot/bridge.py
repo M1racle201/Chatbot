@@ -5,8 +5,10 @@
   兼容别名：{"type": "agent"} / {"type": "agentic"}（统一按 task 处理）
   {"type": "clear_history"} / {"type": "clear_memory"} / {"type": "exit"}
 - 事件（stdout）：ready / user / stream / log / status / result / error / pong
+- 事件（stdout）：ready / user / stream / step / log / status / result / error / pong
 
 依赖通过构造函数注入（chat/run_task），便于单元测试。
+- step 事件：{"type": "step", "stage": "rewriter|tool|tool_result|verify_pass|verify_reject|retry|fast", "content": "...", "tool": "可选的工具名"}
 """
 
 import asyncio
@@ -65,6 +67,13 @@ class Bridge:
         self._emit(type="stream", content=content)
         self._streamed = True
 
+    def emit_step(self, stage: str, content: str, **meta) -> None:
+        """把 agent 的思考链步骤转发为 step 事件（供前端展示过程）。
+
+        meta 可携带额外信息（如 tool=工具名），前端据此区分工具调用与结果。
+        """
+        self._emit(type="step", stage=stage, content=content, **meta)
+
     def _event_stream(self):
         """把后端 print 输出重定向为 log 事件（防止污染 JSON 协议流）。"""
         return contextlib.redirect_stdout(_LineEmitter(self._emit))
@@ -122,7 +131,7 @@ class Bridge:
         try:
             with self._event_stream():
                 result = _run_sync_or_async(
-                    self.run_task, content, self.emit_stream
+                    self.run_task, content, self.emit_stream, self.emit_step
                 )
             self._emit(
                 type="result",

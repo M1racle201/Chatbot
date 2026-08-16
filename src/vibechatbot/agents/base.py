@@ -31,6 +31,7 @@ class BaseAgent:
         self.name = name
         self.chat = chat  # Chat 客户端(LLM 调用),基座阶段可为 None
         self.stream_callback = None  # 可选:流式文本增量回调(如转发给 UI)
+        self.step_callback = None  # 可选:思考链步骤回调(如转发给 UI 展示)
         self.last_message: Optional[AgentMessage] = None
 
     async def run(self, message: AgentMessage) -> AgentMessage:

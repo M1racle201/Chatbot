@@ -1,18 +1,65 @@
-import React from 'react';
-import {Box, Text} from 'ink';
+import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
+import {Box, Text, measureElement, useInput, useStdin, useStdout} from 'ink';
 import TextInput from 'ink-text-input';
-import {SIDEBAR_WIDTH, deriveRecentThreads} from './layout.mjs';
+import stringWidth from 'string-width';
+import wrapAnsi from 'wrap-ansi';
+import {SIDEBAR_WIDTH, deriveRecentThreads, isWideLayout} from './layout.mjs';
 
 const COLOR = {
-  amber: '#F2B84B',
+  amber: '#62a2f5',
   cyan: '#58D1C2',
   surface: '#191F27',
   border: '#30363D',
   text: '#F2F2ED',
   muted: '#9CA3AD',
-  success: '#68D391',
+  success: '#89f2b1',
   error: '#F47067',
 };
+
+const STEP_META = {
+  rewriter: {icon: '⟳', label: '思考 · 任务复写', color: COLOR.amber},
+  tool: {icon: '⚒', label: '工具调用', color: COLOR.cyan},
+  tool_result: {icon: '↳', label: '工具结果', color: COLOR.muted},
+  verify_pass: {icon: '✔', label: '核查通过', color: COLOR.success},
+  verify_reject: {icon: '✗', label: '核查打回', color: COLOR.error},
+  retry: {icon: '↻', label: '重试', color: COLOR.amber},
+  fast: {icon: '⚡', label: '快速通道', color: COLOR.cyan},
+};
+
+function parseToolCall(text) {
+  const value = String(text || '').trim();
+  const match = value.match(/^([A-Za-z_][A-Za-z0-9_.-]*)\s*\(([\s\S]*)\)$/);
+  if (match) {
+    return {name: match[1], args: match[2].trim()};
+  }
+  const open = value.indexOf('(');
+  if (open > 0) {
+    return {
+      name: value.slice(0, open).trim(),
+      args: value.slice(open + 1).replace(/\)$/, '').trim(),
+    };
+  }
+  return {name: '', args: value};
+}
+
+function formatToolArguments(args) {
+  try {
+    return JSON.stringify(JSON.parse(args), null, 2);
+  } catch {
+    return args;
+  }
+}
+
+function wrappedLineCount(text, maxWidth) {
+  const value = String(text || ' ');
+  return Math.max(
+    1,
+    wrapAnsi(value, Math.max(1, maxWidth), {
+      trim: false,
+      hard: true,
+    }).split('\n').length
+  );
+}
 
 
 export function Sidebar({items}) {
@@ -93,48 +140,158 @@ export function WorkspaceHeader({label = 'Task', busy, compact, model = ''}) {
   );
 }
 
-export function ToolActivity({text, busy = false}) {
+export function ToolActivity({text, busy = false, contentWidth = 68}) {
+  const prefixWidth = stringWidth(busy ? '○' : '✓') + stringWidth('  Tool  ');
+  const textWidth = Math.max(12, contentWidth - 2 - prefixWidth);
+  const lineCount = wrappedLineCount(text, textWidth);
+
   return (
     <Box
-      borderStyle="single"
-      borderColor={COLOR.border}
       paddingX={1}
       marginBottom={1}
       width="100%"
+      height={lineCount}
+      flexShrink={0}
+      backgroundColor={COLOR.surface}
     >
       <Text color={busy ? COLOR.amber : COLOR.success}>
         {busy ? '○' : '✓'}
       </Text>
       <Text bold>{'  Tool  '}</Text>
-      <Text color={COLOR.muted} wrap="truncate-end">{text}</Text>
+      <Text color={COLOR.muted} wrap="wrap">{text}</Text>
     </Box>
   );
 }
 
-export function ResultPanel({text}) {
+function ToolCallStep({item, contentWidth = 68}) {
+  const {name, args} = parseToolCall(item.text);
+  const body = formatToolArguments(args);
+  const bodyWidth = Math.max(12, contentWidth - 4);
+  const height = 1 + 1 + wrappedLineCount(body || ' ', bodyWidth);
+
   return (
     <Box
       flexDirection="column"
-      borderStyle="single"
-      borderColor={COLOR.border}
       marginBottom={1}
       width="100%"
+      height={height}
+      flexShrink={0}
     >
-      <Box paddingX={1} backgroundColor={COLOR.surface}>
+      <Box width="100%" paddingX={1} backgroundColor={COLOR.surface}>
+        <Text bold color={COLOR.cyan}>⚒ Tool call</Text>
+        {name ? <Text color={COLOR.cyan}>{` · ${name}`}</Text> : null}
+      </Box>
+      <Box paddingX={2} paddingTop={1}>
+        <Text color={COLOR.text} wrap="wrap">
+          {body}
+        </Text>
+      </Box>
+    </Box>
+  );
+}
+
+function ToolResultStep({item, contentWidth = 68}) {
+  const body = formatToolArguments(item.text);
+  const bodyWidth = Math.max(12, contentWidth - 4);
+  const bodyLineCount = wrappedLineCount(body || ' ', bodyWidth);
+  const visibleBodyLines = Math.min(2, bodyLineCount);
+  const height = 1 + 1 + visibleBodyLines;
+
+  return (
+    <Box
+      flexDirection="column"
+      marginBottom={1}
+      width="100%"
+      height={height}
+      flexShrink={0}
+    >
+      <Box width="100%" paddingX={1} backgroundColor={COLOR.surface}>
+        <Text color={COLOR.muted}>↳ Tool result</Text>
+        {item.tool ? <Text color={COLOR.muted}>{` · ${item.tool}`}</Text> : null}
+      </Box>
+      <Box
+        paddingX={2}
+        paddingTop={1}
+        height={1 + visibleBodyLines}
+        overflow="hidden"
+      >
+        <Text color={COLOR.muted} wrap="wrap">{body}</Text>
+      </Box>
+    </Box>
+  );
+}
+
+function ThoughtStep({item, contentWidth = 68}) {
+  const meta = STEP_META[item.stage] || {
+    icon: '·',
+    label: '思考',
+    color: COLOR.muted,
+  };
+  const body = item.text === meta.label ? '' : item.text;
+  const bodyWidth = Math.max(12, contentWidth - 3);
+  const bodyLines = body ? wrappedLineCount(body, bodyWidth) : 0;
+  const height = 1 + (body ? 1 + bodyLines : 0);
+
+  return (
+    <Box
+      flexDirection="column"
+      marginBottom={1}
+      paddingLeft={1}
+      width="100%"
+      height={height}
+      flexShrink={0}
+    >
+      <Box>
+        <Text color={meta.color}>{meta.icon}</Text>
+        <Text bold color={meta.color}>{`  ${meta.label}`}</Text>
+      </Box>
+      {body ? (
+        <Box paddingLeft={2} paddingTop={1}>
+          <Text
+            color={item.stage === 'verify_reject' ? COLOR.error : COLOR.text}
+            wrap="wrap"
+          >
+            {body}
+          </Text>
+        </Box>
+      ) : null}
+    </Box>
+  );
+}
+
+export function ResultPanel({text, contentWidth = 68}) {
+  const bodyWidth = Math.max(12, contentWidth - 2);
+  const height = 1 + 1 + wrappedLineCount(text || ' ', bodyWidth);
+
+  return (
+    <Box
+      flexDirection="column"
+      marginBottom={1}
+      width="100%"
+      height={height}
+      flexShrink={0}
+    >
+      <Box width="100%" paddingX={1} backgroundColor={COLOR.surface}>
         <Text bold>Result</Text>
       </Box>
-      <Box paddingX={1}>
+      <Box paddingX={1} paddingTop={1}>
         <Text color={COLOR.text} wrap="wrap">{text}</Text>
       </Box>
     </Box>
   );
 }
 
-function Message({item}) {
+function Message({item, contentWidth}) {
   switch (item.kind) {
     case 'user':
       return (
-        <Box flexDirection="column" marginBottom={1} width="100%">
+        <Box
+          flexDirection="column"
+          marginBottom={1}
+          width="100%"
+          height={1 + wrappedLineCount(item.text, contentWidth)}
+          flexShrink={0}
+        >
           <Text bold color={COLOR.amber}>You</Text>
           <Text color={COLOR.text} wrap="wrap">
             {item.text}
@@ -143,7 +300,13 @@ function Message({item}) {
       );
     case 'assistant':
       return (
-        <Box flexDirection="column" marginBottom={1} width="100%">
+        <Box
+          flexDirection="column"
+          marginBottom={1}
+          width="100%"
+          height={1 + wrappedLineCount(item.text, contentWidth)}
+          flexShrink={0}
+        >
           <Text bold color={COLOR.cyan}>Agent</Text>
           <Text color={COLOR.text} wrap="wrap">
             {item.text}
@@ -151,29 +314,158 @@ function Message({item}) {
         </Box>
       );
     case 'log':
-      return <ToolActivity text={item.text} />;
+      return <ToolActivity text={item.text} contentWidth={contentWidth} />;
+    case 'step':
+      if (item.stage === 'tool') {
+        return <ToolCallStep item={item} contentWidth={contentWidth} />;
+      }
+      if (item.stage === 'tool_result') {
+        return <ToolResultStep item={item} contentWidth={contentWidth} />;
+      }
+      return <ThoughtStep item={item} contentWidth={contentWidth} />;
     case 'notice':
       return (
-        <Text color={COLOR.muted} wrap="wrap">
-          {'· '}{item.text}
-        </Text>
+        <Box
+          height={wrappedLineCount(`· ${item.text}`, contentWidth)}
+          flexShrink={0}
+        >
+          <Text color={COLOR.muted} wrap="wrap">
+            {'· '}{item.text}
+          </Text>
+        </Box>
       );
     case 'result':
-      return <ResultPanel text={item.text} />;
+      return <ResultPanel text={item.text} contentWidth={contentWidth} />;
     case 'error':
       return (
-        <Text bold color={COLOR.error} wrap="wrap">
-          {'! Error  '}{item.text}
-        </Text>
+        <Box
+          height={wrappedLineCount(`! Error  ${item.text}`, contentWidth)}
+          flexShrink={0}
+        >
+          <Text bold color={COLOR.error} wrap="wrap">
+            {'! Error  '}{item.text}
+          </Text>
+        </Box>
       );
     default:
       return <Text> </Text>;
   }
 }
 
-export function Transcript({items, stream, status}) {
+export function parseSgrMouseSequence(input) {
+  const match = String(input || '').match(
+    /^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/
+  );
+  if (!match) return null;
+  return {
+    button: Number(match[1]),
+    x: Number(match[2]),
+    y: Number(match[3]),
+    action: match[4],
+  };
+}
+
+function useMouseWheel(onWheel) {
+  const {internal_eventEmitter} = useStdin();
+  const {stdout} = useStdout();
+  const onWheelRef = useRef(onWheel);
+  onWheelRef.current = onWheel;
+
+  useEffect(() => {
+    if (!stdout?.isTTY || !internal_eventEmitter) return undefined;
+    const emitter = internal_eventEmitter;
+    const originalEmit = emitter.emit.bind(emitter);
+
+    emitter.emit = (event, input, key) => {
+      if (event === 'input') {
+        const mouse = parseSgrMouseSequence(input);
+        if (mouse) {
+          if (mouse.action === 'M' && mouse.button === 64) {
+            onWheelRef.current(-3);
+          } else if (mouse.action === 'M' && mouse.button === 65) {
+            onWheelRef.current(3);
+          }
+          // 拦截所有鼠标上报，避免 TextInput 把鼠标序列当成普通字符插入。
+          return true;
+        }
+      }
+      return originalEmit(event, input, key);
+    };
+
+    stdout.write('\x1b[?1000h\x1b[?1006h');
+    return () => {
+      emitter.emit = originalEmit;
+      stdout.write('\x1b[?1000l\x1b[?1006l');
+    };
+  }, [internal_eventEmitter, stdout]);
+}
+
+export function Transcript({items, stream, status, columns = 80, wide}) {
+  const hasSidebar = wide === undefined ? isWideLayout(columns) : wide;
+  const contentWidth = Math.max(
+    12,
+    columns - (hasSidebar ? SIDEBAR_WIDTH : 0) - 4
+  );
+  const viewportRef = useRef(null);
+  const contentRef = useRef(null);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const [pinnedToBottom, setPinnedToBottom] = useState(true);
+
+  const maxScrollOffset = Math.max(0, contentHeight - viewportHeight);
+
+  useLayoutEffect(() => {
+    const nextViewportHeight = measureElement(viewportRef.current).height || 0;
+    const nextContentHeight = measureElement(contentRef.current).height || 0;
+    setViewportHeight(nextViewportHeight);
+    setContentHeight(nextContentHeight);
+  }, [items, stream, status, columns, wide]);
+
+  useLayoutEffect(() => {
+    if (pinnedToBottom) {
+      setScrollOffset(maxScrollOffset);
+    }
+  }, [maxScrollOffset, pinnedToBottom]);
+
+  useEffect(() => {
+    if (scrollOffset >= maxScrollOffset) {
+      setPinnedToBottom(true);
+    }
+  }, [scrollOffset, maxScrollOffset]);
+
+  // 提交新任务后自动回到最底部，避免停留在历史滚动位置看不到新回复。
+  useEffect(() => {
+    if (items[items.length - 1]?.kind === 'user') {
+      setPinnedToBottom(true);
+    }
+  }, [items]);
+
+  const scrollBy = (delta) => {
+    if (delta < 0) setPinnedToBottom(false);
+    setScrollOffset((current) =>
+      Math.max(0, Math.min(maxScrollOffset, current + delta))
+    );
+  };
+
+  useMouseWheel(scrollBy);
+
+  useInput((_input, key) => {
+    const pageSize = Math.max(1, viewportHeight - 2);
+    if (key.upArrow) {
+      scrollBy(-1);
+    } else if (key.downArrow) {
+      scrollBy(1);
+    } else if (key.pageUp) {
+      scrollBy(-pageSize);
+    } else if (key.pageDown) {
+      scrollBy(pageSize);
+    }
+  });
+
   return (
     <Box
+      ref={viewportRef}
       flexDirection="column"
       flexGrow={1}
       flexShrink={1}
@@ -181,36 +473,68 @@ export function Transcript({items, stream, status}) {
       paddingX={2}
       paddingTop={1}
     >
-      {items.slice(-60).map((item) => (
-        <Message key={item.key} item={item} />
-      ))}
-      {stream && (
-        <Message
-          item={{kind: 'assistant', text: `${stream}▌`}}
-         
-        />
-      )}
-      {status && <ToolActivity text={status} busy />}
+      <Box
+        ref={contentRef}
+        flexDirection="column"
+        flexShrink={0}
+        marginTop={-scrollOffset}
+      >
+        {items.slice(-60).map((item) => (
+          <Message key={item.key} item={item} contentWidth={contentWidth} />
+        ))}
+        {stream && (
+          <Message
+            item={{kind: 'assistant', text: `${stream}▌`}}
+            contentWidth={contentWidth}
+          />
+        )}
+        {status && (
+          <ToolActivity text={status} busy contentWidth={contentWidth} />
+        )}
+      </Box>
     </Box>
   );
 }
 
-export function Composer({input, setInput, submit, label = 'Task', busy}) {
+export function Composer({
+  input,
+  setInput,
+  submit,
+  label = 'Task',
+  busy,
+  columns = 80,
+  maxHeight = 21,
+}) {
   const placeholder = busy
     ? 'Agent is working...'
     : 'Ask the agent to inspect, build, or explain...';
 
+  // 输入框可用宽度：去掉侧栏、边框、内边距、右侧 label 和提交箭头。
+  const compact = !isWideLayout(columns);
+  const outerWidth = Math.max(24, columns - (compact ? 0 : SIDEBAR_WIDTH));
+  const inputWidth = Math.max(12, outerWidth - 8 - stringWidth(label));
+  const renderedText = input ? `${input} ` : placeholder;
+  const lineCount = wrappedLineCount(renderedText, inputWidth);
+  const maxVisibleInputLines = Math.max(1, maxHeight - 2);
+  const collapsed = lineCount > maxVisibleInputLines;
+  const composerHeight = Math.max(3, Math.min(2 + lineCount, maxHeight));
+
   return (
     <Box
       width="100%"
-      height={4}
+      height={composerHeight}
       flexShrink={0}
       paddingX={1}
-      paddingY={1}
       borderStyle="single"
       borderColor={COLOR.amber}
+      overflow="hidden"
     >
-      <Box flexGrow={1} marginRight={1}>
+      <Box
+        display={collapsed ? 'none' : 'flex'}
+        flexGrow={1}
+        marginRight={1}
+        overflow="hidden"
+      >
         <TextInput
           value={input}
           onChange={setInput}
@@ -218,6 +542,13 @@ export function Composer({input, setInput, submit, label = 'Task', busy}) {
           placeholder={placeholder}
         />
       </Box>
+      {collapsed ? (
+        <Box flexGrow={1} marginRight={1} overflow="hidden">
+          <Text color={COLOR.muted} wrap="truncate-end">
+            [{lineCount} lines * {maxVisibleInputLines} rows] 内容过多，已折叠显示
+          </Text>
+        </Box>
+      ) : null}
       <Text color={COLOR.muted}>{label}{'  '}</Text>
       <Text bold color={COLOR.amber}>↗</Text>
     </Box>

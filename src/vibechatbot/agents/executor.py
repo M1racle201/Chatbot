@@ -20,6 +20,7 @@ from vibechatbot import config
 from vibechatbot.agents.base import AgentMessage, BaseAgent
 
 MAX_EXECUTOR_STEPS = 10
+MAX_TOOL_RESULT_STEP_CHARS = 1600  # UI 思考链中单个工具结果最多展示的字符数
 CONVERGENCE_ROUNDS = 2  # 连续 N 轮输出相似视为收敛
 SIMILARITY_THRESHOLD = 0.98  # 快照相似度阈值(微调参数不视为收敛,完全相同才收敛)
 MAX_EXECUTOR_MESSAGES = 60
@@ -34,9 +35,54 @@ DEFAULT_EXECUTOR_PROMPT = """你是主题执行器,负责基于向量知识库�
 - 涉及知识库内容的问题,先调用 query_documents 检索,再基于检索结果回答
 - 回答时标注信息来源文件名(如:根据《xxx.pdf》)
 - 检索结果不足时明确说明"知识库中没有相关内容",不要猜测
-- 读取文件用 load,文档入库用 add_documents,输出文件用 save_file
+- 读取文件用 load,文档入库用 add_documents,简短输出用 save_file
+- 论文、代码、HTML、长报告等长文本一律用 save_long_output 保存到 OUTPUT 目录
+- 长文本保存后只向终端回复文件路径和大小,禁止直接粘贴大段正文
+- 仅当用户明确要求源码/原文/完整内容时才允许把长文本直接输出到终端
 - write_file 可写任意路径(自动创建父目录),但严禁写入向量库目录(VECTOR_DB)
 - 完成时输出最终结论,不要输出过程描述"""
+
+
+def _tool_result_step_text(result: str, limit: int = MAX_TOOL_RESULT_STEP_CHARS) -> str:
+    """生成适合 UI 思考链展示的工具结果文本。
+
+    - 把常见工具结果转成可直接换行阅读的文本，避免 UI 收到一整行带 \\n 转义的 JSON
+    - 超长时保留头尾两段，省略中间，保证末尾的统计信息/退出码不会被截掉
+    """
+    try:
+        data = json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        text = result
+    else:
+        if isinstance(data, dict) and isinstance(data.get("stdout"), str):
+            parts = [data["stdout"].rstrip()]
+            if data.get("stderr"):
+                parts.append("stderr:\n" + data["stderr"].rstrip())
+            if "exit_code" in data:
+                parts.append(f"exit_code: {data['exit_code']}")
+            text = "\n".join(parts)
+        elif isinstance(data, dict) and isinstance(data.get("content"), str):
+            prefix = f"path: {data['path']}\n" if data.get("path") else ""
+            text = prefix + data["content"]
+        elif isinstance(data, dict) and isinstance(data.get("results"), list):
+            lines = []
+            for index, item in enumerate(data["results"], 1):
+                source = item.get("source") or "unknown"
+                content = item.get("content") or ""
+                lines.append(f"{index}. 《{source}》 {content}")
+            text = "\n".join(lines) or json.dumps(data, ensure_ascii=False, indent=2)
+        else:
+            text = json.dumps(data, ensure_ascii=False, indent=2)
+    if len(text) <= limit:
+        return text
+    omitted = len(text) - limit
+    prefix_size = max(1, (limit - 40) // 2)
+    suffix_size = max(1, limit - 40 - prefix_size)
+    return (
+        text[:prefix_size]
+        + f"\n… 中间省略 {omitted} 字符 …\n"
+        + text[-suffix_size:]
+    )
 
 
 def _default_tools():
@@ -177,9 +223,20 @@ class ExecutorAgent(BaseAgent):
                         )
                     except json.JSONDecodeError:
                         arguments = {}
+                    if self.step_callback is not None:
+                        arg_text = json.dumps(arguments, ensure_ascii=False)[:100]
+                        self.step_callback(
+                            "tool", f"{name}({arg_text})", tool=name
+                        )
                     result = await asyncio.to_thread(
                         self.tool_executor, name, arguments
                     )
+                    if self.step_callback is not None:
+                        self.step_callback(
+                            "tool_result",
+                            _tool_result_step_text(result),
+                            tool=name,
+                        )
                     agent_messages.append(
                         {
                             "role": "tool",

@@ -23,7 +23,7 @@ class FakeChat:
 class FakeRunTask:
     """按任务返回结构化结果的 fake 统一任务入口。"""
 
-    def __call__(self, task, stream_callback=None):
+    def __call__(self, task, stream_callback=None, step_callback=None):
         if task == "保存文件":
             return {"route": "fast", "output": "快速通道结论"}
         return {
@@ -37,10 +37,22 @@ class FakeRunTask:
 class FakeStreamRunTask:
     """带流式回调的 fake：任务执行中逐块输出文本。"""
 
-    def __call__(self, task, stream_callback=None):
+    def __call__(self, task, stream_callback=None, step_callback=None):
         if stream_callback:
             stream_callback("chunk-a"); stream_callback("chunk-b")
         return {"route": "fast", "output": "done"}
+
+
+class FakeStepRunTask:
+    """带思考链回调的 fake：执行中上报复写与核查步骤。"""
+
+    def __call__(self, task, stream_callback=None, step_callback=None):
+        if step_callback:
+            step_callback("rewriter", "复写后任务: 检查文件")
+            step_callback("tool", "load(x.pdf)", tool="load")
+            step_callback("tool_result", "{\"content\": \"ok\"}", tool="load")
+            step_callback("verify_pass", "核查通过")
+        return {"route": "pipeline", "output": "done"}
 
 
 def run_bridge(commands, run_task=None):
@@ -125,6 +137,19 @@ class TestBridge(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["content"], "done")
         self.assertIs(results[0]["streamed"], True)  # 发过流式文本
+
+    def test_task_steps_forwarded(self):
+        events = run_bridge(
+            [{"type": "task", "content": "x"}], run_task=FakeStepRunTask()
+        )
+        steps = [e for e in events if e["type"] == "step"]
+        self.assertEqual(
+            [s["stage"] for s in steps],
+            ["rewriter", "tool", "tool_result", "verify_pass"],
+        )
+        self.assertEqual(steps[0]["content"], "复写后任务: 检查文件")
+        self.assertEqual(steps[1]["tool"], "load")
+        self.assertEqual(steps[2]["tool"], "load")
 
 
 if __name__ == "__main__":

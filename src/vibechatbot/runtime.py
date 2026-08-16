@@ -19,8 +19,8 @@ from vibechatbot.agents import ExecutorAgent, Pipeline, RewriterAgent, VerifierA
 from vibechatbot.agents.pipeline import is_simple_tool_task
 from vibechatbot.chat import Chat
 
-MAX_SESSION_ROUNDS = 3  # 注入给 agent 的最近任务轮数
-MAX_SESSION_CHARS = 300  # 每轮结论截断长度
+MAX_SESSION_ROUNDS = 5  # 注入给 agent 的最近任务轮数
+MAX_SESSION_CHARS = 2000  # 每轮结论截断长度
 
 
 class Runtime:
@@ -43,10 +43,16 @@ class Runtime:
         self.session_records = []  # 本会话全部任务记录（写入存档）
         self.session_file = None  # 会话存档路径，首次任务时确定
 
-    def run_task(self, task: str, stream_callback=None) -> dict:
-        """统一任务入口：快速通道或复写→执行→核查，结果写入会话存档。"""
+    def run_task(
+        self, task: str, stream_callback=None, step_callback=None
+    ) -> dict:
+        """统一任务入口：快速通道或复写→执行→核查，结果写入会话存档。
+        step_callback: 可选，思考链步骤回调(stage, content)，供 UI 展示过程。
+        """
         context = self._build_context()
         if self.is_simple_tool_task(task):
+            if step_callback is not None:
+                step_callback("fast", "快速通道：直接执行工具任务")
             output = self.agent.run(task, context=context) or ""
             record = {
                 "route": "fast",
@@ -57,7 +63,12 @@ class Runtime:
             result = {"route": "fast", "output": output}
         else:
             final = asyncio.run(
-                self.pipeline.run(task, context=context, stream_callback=stream_callback)
+                self.pipeline.run(
+                    task,
+                    context=context,
+                    stream_callback=stream_callback,
+                    step_callback=step_callback,
+                )
             )
             verdict = final.meta.get("verdict", {})
             output = final.meta.get("candidate", final.output)

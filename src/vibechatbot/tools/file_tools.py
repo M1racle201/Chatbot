@@ -4,6 +4,9 @@ import os
 import re
 import zipfile
 import xml.etree.ElementTree as ET
+import subprocess
+import sys
+import tempfile
 
 from vibechatbot import config
 from vibechatbot.vector_store import VectorStore
@@ -112,14 +115,19 @@ def load_file(path: str, chunk: bool = False) -> dict:
     if not os.path.exists(path):
         return {"error": f"文件不存在: {path}"}
     ext = os.path.splitext(path)[1].lower()
-    if ext == ".txt":
+    if ext in (
+        ".txt", ".md", ".markdown", ".html", ".htm",
+        ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".csv",
+        ".py", ".js", ".jsx", ".ts", ".tsx", ".css", ".java",
+        ".c", ".cpp", ".cc", ".h", ".hpp", ".go", ".rs", ".sh", ".sql",
+    ):
         content = _read_txt(path)
     elif ext in (".docx", ".doc"):
         content = _read_docx(path)
     elif ext == ".pdf":
         content = _read_pdf(path)
     else:
-        return {"error": f"不支持的文件类型: {ext}（支持 txt / docx / pdf）"}
+        return {"error": f"不支持的文件类型: {ext}（支持 txt / md / html / json / yaml / 常见代码文件 / docx / pdf）"}
     result = {"path": path, "content": content}
     if chunk:
         result["chunks"] = split_text(content)
@@ -173,6 +181,34 @@ def save_file(filename: str, content: str) -> dict:
     return {"filename": filename, "path": path, "chars": len(content)}
 
 
+_LONG_OUTPUT_EXTENSIONS = {
+    "paper": ".md",
+    "code": ".txt",
+    "html": ".html",
+    "text": ".txt",
+}
+
+
+def save_long_output(filename: str, content: str, kind: str = "text") -> dict:
+    """把论文/代码/HTML 等长文本保存到 OUTPUT 目录，只返回文件路径和大小。
+
+    该工具的返回结果不包含正文，模型应仅向终端汇报文件地址和大小。
+    """
+    filename = filename.strip()
+    if "." not in filename:
+        filename += _LONG_OUTPUT_EXTENSIONS.get(kind, ".txt")
+    result = save_file(filename, content)
+    if "error" in result:
+        return result
+    return {
+        "filename": result["filename"],
+        "path": result["path"],
+        "chars": result["chars"],
+        "kind": kind if kind in _LONG_OUTPUT_EXTENSIONS else "text",
+        "note": "内容已写入文件；请仅向用户回复文件路径和大小，不要粘贴正文。",
+    }
+
+
 def _is_within(path: str, directory: str) -> bool:
     """判断 path 是否位于 directory 目录内（规范化后，防路径穿越）。"""
     path = os.path.abspath(path)
@@ -202,13 +238,92 @@ def write_file(path: str, content: str) -> dict:
     return {"path": path, "chars": len(content), "updated": updated}
 
 
+def _kill_process_tree(pid: int) -> None:
+    """终止进程树：Windows 用 taskkill /T /F，其他平台仅杀直接子进程。"""
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            capture_output=True,
+            timeout=10,
+        )
+    else:
+        try:
+            os.kill(pid, 9)
+        except OSError:
+            pass
+
+
+def _read_output(path: str) -> str:
+    """读取子进程输出文件（尝试常见编码，避免中文乱码）。"""
+    for encoding in ("utf-8", "gbk"):
+        try:
+            with open(path, encoding=encoding) as file:
+                return file.read()
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    return ""
+
+
+def run_python_script(script: str, timeout: int = 60) -> dict:
+    """生成临时 Python 脚本并立即执行，执行后自动删除临时文件。
+    使用当前 Python 解释器执行（不依赖 PATH 中的 python）；
+    超时时通过 taskkill 终止整个进程树（含脚本启动的子进程）；
+    无论成功还是失败、超时，临时文件都会被删除。
+    """
+    fd, path = tempfile.mkstemp(prefix="vibechat_run_", suffix=".py")
+    out_fd, out_path = tempfile.mkstemp(prefix="vibechat_out_", suffix=".txt")
+    err_fd, err_path = tempfile.mkstemp(prefix="vibechat_err_", suffix=".txt")
+    os.close(out_fd)
+    os.close(err_fd)
+    timed_out = False
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            file.write(script)
+        with open(out_path, "wb") as out_file, open(err_path, "wb") as err_file:
+            process = subprocess.Popen(
+                [sys.executable, path],
+                stdin=subprocess.DEVNULL,
+                stdout=out_file,
+                stderr=err_file,
+            )
+            try:
+                process.wait(timeout=timeout)
+                exit_code = process.returncode
+            except subprocess.TimeoutExpired:
+                _kill_process_tree(process.pid)
+                process.wait()
+                timed_out = True
+                exit_code = None
+        stdout_text = _read_output(out_path)
+        stderr_text = _read_output(err_path)
+        if timed_out:
+            return {
+                "error": f"脚本执行超时（>{timeout}s），已终止整个进程树并删除临时文件",
+                "stdout": stdout_text[-4000:],
+                "stderr": stderr_text[-2000:],
+            }
+        return {
+            "exit_code": exit_code,
+            "stdout": stdout_text[-4000:],
+            "stderr": stderr_text[-2000:],
+        }
+    except OSError as exc:
+        return {"error": f"脚本执行失败: {exc}"}
+    finally:
+        for temp_path in (path, out_path, err_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+
 TOOLS = [
     {
         "name": "load",
         "description": (
             "读取本地文件内容并转换为纯文本字符串，"
-            "支持 Word（.docx）、文本（.txt）、PDF（.pdf）文件；"
-            "长文本请设置 chunk=true，返回按 500 字分好的块，避免浪费 token"
+            "支持 Word（.docx）、文本/ Markdown / HTML / JSON / YAML / 常见代码文件、"
+            "PDF（.pdf）；长文本请设置 chunk=true，返回按 500 字分好的块，避免浪费 token"
         ),
         "parameters": {
             "type": "object",
@@ -226,8 +341,9 @@ TOOLS = [
     {
         "name": "add_documents",
         "description": (
-            "读取本地文件（Word/txt/PDF），自动分块后存入向量数据库，"
-            "供后续语义检索问答使用；重复入库同一文件会追加新块"
+            "读取本地文件（Word/txt/PDF/Markdown/HTML/JSON/YAML/代码文件），"
+            "自动分块后存入向量数据库，供后续语义检索问答使用；"
+            "重复入库同一文件会追加新块"
         ),
         "parameters": {
             "type": "object",
@@ -274,6 +390,35 @@ TOOLS = [
         "function": save_file,
     },
     {
+        "name": "save_long_output",
+        "description": (
+            "将论文、长报告、代码、HTML 等长文本保存到 OUTPUT 目录，"
+            "并只返回文件路径与大小；用于避免把大段正文直接输出到终端。"
+            "除非用户明确要求源码或原文，否则长内容一律用本工具保存，"
+            "终端只汇报文件地址。filename 建议带扩展名；kind 可为 "
+            "paper/code/html/text"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string",
+                    "description": "文件名，如 report.md、app.py、page.html",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "要保存的完整文本内容",
+                },
+                "kind": {
+                    "type": "string",
+                    "description": "内容类型：paper/code/html/text，默认 text",
+                },
+            },
+            "required": ["filename", "content"],
+        },
+        "function": save_long_output,
+    },
+    {
         "name": "write_file",
         "description": (
             "修改或创建文本文件（覆盖写入）；除向量库目录（VECTOR_DB）外"
@@ -289,5 +434,26 @@ TOOLS = [
             "required": ["path", "content"],
         },
         "function": write_file,
+    },
+    {
+        "name": "run_python_script",
+        "description": (
+            "生成临时 Python 脚本并立即执行（使用当前 Python 解释器），执行结束后自动删除临时文件；"
+            "超时会终止整个进程树（含脚本启动的子进程），不会残留后台进程；"
+            "适用于批量文件处理、数据分析等需要运行自定义代码的场景；"
+            "timeout 为执行超时秒数，默认 60 秒，失败/超时都会自动清理"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "script": {"type": "string", "description": "要执行的 Python 代码"},
+                "timeout": {
+                    "type": "integer",
+                    "description": "执行超时秒数，1-300 秒，默认 60",
+                },
+            },
+            "required": ["script"],
+        },
+        "function": run_python_script,
     },
 ]

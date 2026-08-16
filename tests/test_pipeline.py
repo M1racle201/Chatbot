@@ -192,6 +192,25 @@ class TestPipelineRetryLoop(unittest.TestCase):
         self.assertTrue(final.meta["verdict"]["passed"])
         self.assertEqual(verifier.rounds, 1)
 
+    def test_step_callback_emits_chain(self):
+        """思考链事件：复写 → 打回 → 重试 → 核查通过。"""
+        verifier = FakeVerifier([False, True])
+        pipeline = Pipeline(
+            [FakeRewriter(), FakeExecutor(), verifier],
+            verifier=verifier,
+            max_retries=3,
+        )
+        steps = []
+        asyncio.run(
+            pipeline.run("任务", step_callback=lambda s, c: steps.append((s, c)))
+        )
+        stages = [s for s, _ in steps]
+        self.assertEqual(stages[0], "rewriter")
+        self.assertIn("verify_reject", stages)
+        self.assertIn("retry", stages)
+        self.assertIn("verify_pass", stages)
+        self.assertEqual(steps[-1][0], "verify_pass")
+
 
 class TestEvidenceFlow(unittest.TestCase):
     def test_evidence_flows_to_verifier(self):
