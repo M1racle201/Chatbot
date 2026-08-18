@@ -15,12 +15,12 @@ from datetime import datetime
 
 from vibechatbot import config
 from vibechatbot.agent import Agent
+from vibechatbot.tools import file_tools
 from vibechatbot.agents import ExecutorAgent, Pipeline, RewriterAgent, VerifierAgent
 from vibechatbot.agents.pipeline import is_simple_tool_task
 from vibechatbot.chat import Chat
 
 MAX_SESSION_ROUNDS = 5  # 注入给 agent 的最近任务轮数
-MAX_SESSION_CHARS = 2000  # 每轮结论截断长度
 
 
 class Runtime:
@@ -35,6 +35,9 @@ class Runtime:
         session_dir: str = None,
     ):
         self.chat = chat
+        file_tools.set_memory_summarizer(
+            getattr(chat, "_summarize_messages", None)
+        )
         self.agent = agent
         self.pipeline = pipeline
         self.is_simple_tool_task = is_simple_tool_task
@@ -91,13 +94,25 @@ class Runtime:
         return result
 
     def _build_context(self):
-        """把最近几轮任务对话整理成上下文；无历史时返回 None。"""
+        """把最近几轮任务对话整理成上下文；无历史时返回 None。
+
+        所有历史上下文都通过 chat._summarize_messages 做 LLM 摘要，
+        不再使用字符截断。
+        """
         if not self.session_context:
             return None
-        parts = ["之前的对话："]
+        messages = []
         for task, output in self.session_context[-MAX_SESSION_ROUNDS:]:
-            parts.append(f"用户: {task}\n结果: {output[:MAX_SESSION_CHARS]}")
-        return {"session_history": "\n\n".join(parts)}
+            messages.append({"role": "user", "content": f"用户: {task}"})
+            messages.append({"role": "assistant", "content": f"结果: {output}"})
+
+        summarize = getattr(self.chat, "_summarize_messages", None)
+        if not callable(summarize):
+            raise RuntimeError(
+                "Runtime 需要 chat._summarize_messages 来生成会话上下文摘要"
+            )
+        summary = summarize(messages)
+        return {"session_history": f"之前的对话总结：\n{summary}"}
 
     def _save_session(self) -> str:
         """把整个会话写入同一个 JSON：首任务创建，之后每次任务追加重写。"""

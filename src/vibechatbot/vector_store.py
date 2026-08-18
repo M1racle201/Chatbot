@@ -50,6 +50,18 @@ class LocalHashingEmbeddingFunction:
     def name() -> str:
         return "local_hashing_char_wb"
 
+    def is_legacy(self) -> bool:
+        return False
+
+    def default_space(self) -> str:
+        return "l2"
+
+    def supported_spaces(self) -> list:
+        return ["l2", "cosine", "ip"]
+
+    def validate_config(self, config) -> None:
+        return
+
     @staticmethod
     def build_from_config(config):
         return LocalHashingEmbeddingFunction(**config)
@@ -88,14 +100,14 @@ class VectorStore:
 
     def __init__(
         self,
-        db_dir: str = DB_DIR,
+        db_dir: str = None,
         collection_name: str = COLLECTION_NAME,
         embedding_function=None,
     ):
-        self.db_dir = db_dir
+        self.db_dir = db_dir or DB_DIR
         self.collection_name = collection_name
         self.embedding_function = embedding_function or _default_embedding_function()
-        self.client = chromadb.PersistentClient(path=db_dir)
+        self.client = chromadb.PersistentClient(path=self.db_dir)
         # 旧版空集合可能残留 sentence_transformer 的 embedding 配置；
         # 集合为空时直接删除重建，避免离线本地 embedding 与旧配置冲突。
         try:

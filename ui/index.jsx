@@ -14,6 +14,13 @@ import {
 
 // bundle ????? .build/??????????? bridge.py
 const entryDir = path.dirname(process.argv[1] || process.cwd());
+const exeDir = path.dirname(process.execPath);
+const backendExe =
+  [
+    process.env.VIBECHAT_BRIDGE_EXE,
+    path.join(exeDir, 'vibechatbot-backend.exe'),
+    path.join(exeDir, 'backend.exe'),
+  ].find((candidate) => candidate && existsSync(candidate)) || '';
 const bridgePath =
   [
     path.join(process.cwd(), 'bridge.py'),
@@ -50,12 +57,18 @@ function useTerminalSize() {
 
 
 function createBridge(onEvent, onClose, onError) {
-  const child = spawn(pythonCmd, [bridgePath], {
-    stdio: ['pipe', 'pipe', 'inherit'],
-  });
+  const child = backendExe
+    ? spawn(backendExe, [], {
+        stdio: ['pipe', 'pipe', 'inherit'],
+      })
+    : spawn(pythonCmd, [bridgePath], {
+        stdio: ['pipe', 'pipe', 'inherit'],
+      });
   child.on('error', (err) => {
     onError(
-      `无法启动 Python 后端（${pythonCmd}）：${err.message}。请安装 Python 或用 VIBECHAT_PYTHON 指定路径`
+      backendExe
+        ? `无法启动后端程序（${backendExe}）：${err.message}`
+        : `无法启动 Python 后端（${pythonCmd}）：${err.message}。请安装 Python 或用 VIBECHAT_PYTHON 指定路径`
     );
   });
   const rl = readline.createInterface({input: child.stdout});
@@ -111,6 +124,10 @@ const App = () => {
             pushItem(event.line.trim() ? 'log' : 'spacer', event.line);
             break;
           case 'step':
+            // 被核查打回时，丢弃本轮的流式候选输出，避免终端残留未通过内容。
+            if (event.stage === 'verify_reject' || event.stage === 'retry') {
+              setStream('');
+            }
             pushItem('step', event.content, {
               stage: event.stage,
               tool: event.tool || '',

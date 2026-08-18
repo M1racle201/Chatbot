@@ -365,11 +365,13 @@ export function parseSgrMouseSequence(input) {
   };
 }
 
-function useMouseWheel(onWheel) {
+function useMouseWheel(onWheel, onClick) {
   const {internal_eventEmitter} = useStdin();
   const {stdout} = useStdout();
   const onWheelRef = useRef(onWheel);
+  const onClickRef = useRef(onClick);
   onWheelRef.current = onWheel;
+  onClickRef.current = onClick;
 
   useEffect(() => {
     if (!stdout?.isTTY || !internal_eventEmitter) return undefined;
@@ -384,6 +386,8 @@ function useMouseWheel(onWheel) {
             onWheelRef.current(-3);
           } else if (mouse.action === 'M' && mouse.button === 65) {
             onWheelRef.current(3);
+          } else if (mouse.action === 'M' && mouse.button === 0) {
+            onClickRef.current?.();
           }
           // 拦截所有鼠标上报，避免 TextInput 把鼠标序列当成普通字符插入。
           return true;
@@ -400,6 +404,58 @@ function useMouseWheel(onWheel) {
   }, [internal_eventEmitter, stdout]);
 }
 
+function isToolStep(item) {
+  return (
+    item?.kind === 'step' &&
+    (item.stage === 'tool' || item.stage === 'tool_result')
+  );
+}
+
+export function ToolHistory({
+  userKey,
+  items,
+  collapsed,
+  onToggle,
+  onRegister,
+  contentWidth,
+}) {
+  const headerRef = useRef(null);
+
+  useLayoutEffect(() => {
+    if (!onRegister || !headerRef.current?.yogaNode) return;
+    let top = 0;
+    let node = headerRef.current;
+    while (node?.yogaNode) {
+      top += node.yogaNode.getComputedTop() || 0;
+      node = node.parentNode;
+    }
+    const height = headerRef.current.yogaNode.getComputedHeight() || 0;
+    onRegister(userKey, top, height);
+  }, [onRegister, userKey, collapsed, items.length]);
+
+  return (
+    <Box flexDirection="column" marginBottom={1} width="100%" flexShrink={0}>
+      <Box
+        ref={headerRef}
+        width="100%"
+        paddingX={1}
+        backgroundColor={COLOR.surface}
+        flexShrink={0}
+      >
+        <Text bold color={COLOR.cyan}>⚒ 工具调用 {items.length} 条</Text>
+        <Text color={COLOR.muted}>
+          {collapsed ? ' · 点击展开' : ' · 点击收起'}
+        </Text>
+      </Box>
+      {!collapsed
+        ? items.map((item) => (
+            <Message key={item.key} item={item} contentWidth={contentWidth} />
+          ))
+        : null}
+    </Box>
+  );
+}
+
 export function Transcript({items, stream, status, columns = 80, wide}) {
   const hasSidebar = wide === undefined ? isWideLayout(columns) : wide;
   const contentWidth = Math.max(
@@ -412,6 +468,9 @@ export function Transcript({items, stream, status, columns = 80, wide}) {
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
+  const [expandedToolUsers, setExpandedToolUsers] = useState(() => new Set());
+  const toolBarRangesRef = useRef([]);
+  toolBarRangesRef.current = [];
 
   const maxScrollOffset = Math.max(0, contentHeight - viewportHeight);
 
@@ -441,6 +500,42 @@ export function Transcript({items, stream, status, columns = 80, wide}) {
     }
   }, [items]);
 
+  // 每个任务独立控制展开/收起：
+  // - 新任务开始后全部收起
+  // - 当前任务出现工具调用时展开当前任务
+  // - 当前任务输出最终结果后收起当前任务
+  useLayoutEffect(() => {
+    const last = items[items.length - 1];
+    if (!last) return;
+    const findLastUserKey = (list) => {
+      for (let index = list.length - 1; index >= 0; index--) {
+        if (list[index].kind === 'user') return list[index].key;
+      }
+      return null;
+    };
+    if (isToolStep(last)) {
+      const userKey = findLastUserKey(items);
+      if (userKey != null) {
+        setExpandedToolUsers((current) => {
+          const next = new Set(current);
+          next.add(userKey);
+          return next;
+        });
+      }
+    } else if (last.kind === 'user') {
+      setExpandedToolUsers(new Set());
+    } else if (last.kind === 'assistant' || last.kind === 'result') {
+      const userKey = findLastUserKey(items.slice(0, -1));
+      if (userKey != null) {
+        setExpandedToolUsers((current) => {
+          const next = new Set(current);
+          next.delete(userKey);
+          return next;
+        });
+      }
+    }
+  }, [items]);
+
   const scrollBy = (delta) => {
     if (delta < 0) setPinnedToBottom(false);
     setScrollOffset((current) =>
@@ -448,7 +543,31 @@ export function Transcript({items, stream, status, columns = 80, wide}) {
     );
   };
 
-  useMouseWheel(scrollBy);
+  const toggleToolHistory = (userKey) => {
+    setExpandedToolUsers((current) => {
+      const next = new Set(current);
+      if (next.has(userKey)) {
+        next.delete(userKey);
+      } else {
+        next.add(userKey);
+      }
+      return next;
+    });
+  };
+
+  const registerToolBar = (userKey, top, height) => {
+    toolBarRangesRef.current.push({userKey, top, height});
+  };
+
+  useMouseWheel(scrollBy, (clickY) => {
+    const contentY = clickY + scrollOffset;
+    const hit = toolBarRangesRef.current.find(
+      (range) => contentY >= range.top && contentY < range.top + range.height
+    );
+    if (hit) {
+      toggleToolHistory(hit.userKey);
+    }
+  });
 
   useInput((_input, key) => {
     const pageSize = Math.max(1, viewportHeight - 2);
@@ -479,9 +598,60 @@ export function Transcript({items, stream, status, columns = 80, wide}) {
         flexShrink={0}
         marginTop={-scrollOffset}
       >
-        {items.slice(-60).map((item) => (
-          <Message key={item.key} item={item} contentWidth={contentWidth} />
-        ))}
+        {(() => {
+          const visibleItems = items.slice(-60);
+          const visibleStart = items.length - visibleItems.length;
+          const groups = [];
+          let currentGroup = null;
+          visibleItems.forEach((item, index) => {
+            if (item.kind === 'user') {
+              currentGroup = {userKey: item.key, index, tools: []};
+              groups.push(currentGroup);
+            } else if (currentGroup && isToolStep(item)) {
+              currentGroup.tools.push(item);
+            }
+          });
+          const groupedToolKeys = new Set(
+            groups.flatMap((group) => group.tools.map((tool) => tool.key))
+          );
+          const rendered = [];
+          visibleItems.forEach((item, index) => {
+            const group = groups.find((entry) => entry.index === index);
+            if (group) {
+              rendered.push(
+                <Message
+                  key={item.key}
+                  item={item}
+                  contentWidth={contentWidth}
+                />
+              );
+              if (group.tools.length > 0) {
+                rendered.push(
+                  <ToolHistory
+                    key={`tool-history-${visibleStart + index}`}
+                    userKey={group.userKey}
+                    items={group.tools}
+                    collapsed={!expandedToolUsers.has(group.userKey)}
+                    onToggle={() => toggleToolHistory(group.userKey)}
+                    onRegister={registerToolBar}
+                    contentWidth={contentWidth}
+                  />
+                );
+              }
+            } else if (isToolStep(item) && groupedToolKeys.has(item.key)) {
+              // 已收进对应 ToolHistory，不再重复渲染。
+            } else {
+              rendered.push(
+                <Message
+                  key={item.key}
+                  item={item}
+                  contentWidth={contentWidth}
+                />
+              );
+            }
+          });
+          return rendered;
+        })()}
         {stream && (
           <Message
             item={{kind: 'assistant', text: `${stream}▌`}}

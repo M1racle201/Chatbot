@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 import subprocess
 import sys
 import tempfile
+from datetime import datetime
 
 from vibechatbot import config
 from vibechatbot.vector_store import VectorStore
@@ -163,6 +164,139 @@ def query_documents(query: str, top_k: int = 5) -> dict:
                 "content": item["document"],
                 "source": item["metadata"].get("source"),
                 "index": item["metadata"].get("index"),
+            }
+            for item in results
+        ],
+    }
+
+
+MEMORY_COLLECTION = "conversation_memory"
+MAX_ASSISTANT_MEMORY_CHARS = 300  # assistant 内容只保留简略摘要
+
+
+_memory_summarizer = None
+
+
+def set_memory_summarizer(summarizer):
+    """注入 chat._summarize_messages，让记忆工具用 LLM 总结助手回复。"""
+    global _memory_summarizer
+    _memory_summarizer = summarizer
+
+
+def _memory_store() -> VectorStore:
+    return VectorStore(collection_name=MEMORY_COLLECTION)
+
+
+def _rough_summarize(text: str, max_chars: int = MAX_ASSISTANT_MEMORY_CHARS) -> str:
+    """对助手回复做粗略的抽取式总结。
+
+    优先保留开头和结尾的关键句子，而不是简单截断前 N 个字。
+    """
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text or len(text) <= max_chars:
+        return text
+
+    sentences = [
+        part.strip()
+        for part in re.split(r"(?<=[。！？.!?])\s*|\n+", text)
+        if part.strip()
+    ]
+    if not sentences:
+        return text[:max_chars].rstrip() + "…"
+
+    candidates = []
+    if len(sentences) <= 4:
+        candidates = sentences
+    else:
+        candidates = sentences[:2] + sentences[-2:]
+
+    summary = []
+    total = 0
+    for sentence in candidates:
+        if summary and total + len(sentence) > max_chars:
+            break
+        summary.append(sentence)
+        total += len(sentence)
+
+    result = " ".join(summary)
+    if len(result) > max_chars:
+        result = result[:max_chars].rstrip() + "…"
+    return result
+
+
+def remember_conversation(
+    user_content: str,
+    assistant_content: str,
+    topic: str = "",
+) -> dict:
+    """把完整一轮对话写入 MemoryVectorDB。
+
+    - user 的原始内容完整保留
+    - assistant 的内容做粗略总结
+    - 整轮对话作为一个记忆元素写入
+    """
+    user_content = (user_content or "").strip()
+    assistant_content = (assistant_content or "").strip()
+    if not user_content and not assistant_content:
+        return {"error": "对话内容不能为空"}
+
+    brief_assistant = None
+    if _memory_summarizer is not None:
+        try:
+            brief_assistant = _memory_summarizer(
+                [
+                    {"role": "user", "content": user_content},
+                    {"role": "assistant", "content": assistant_content},
+                ]
+            ).strip()
+        except Exception:
+            brief_assistant = None
+    if not brief_assistant:
+        brief_assistant = _rough_summarize(assistant_content)
+
+    memory_text = f"用户: {user_content}\n助手: {brief_assistant}"
+    store = _memory_store()
+    created = datetime.now().isoformat(timespec="seconds")
+    ids = store.add_texts(
+        [memory_text],
+        metadatas=[
+            {
+                "type": "conversation_memory",
+                "topic": topic.strip(),
+                "source": "conversation",
+                "created_at": created,
+                "user_chars": len(user_content),
+                "assistant_chars": len(assistant_content),
+            }
+        ],
+    )
+    return {
+        "memory_ids": ids,
+        "chunks": 1,
+        "topic": topic.strip(),
+        "created_at": created,
+    }
+
+
+def query_memory(query: str, top_k: int = 3) -> dict:
+    """从 MemoryVectorDB 检索与用户问题相关的历史对话摘要。"""
+    query = (query or "").strip()
+    if not query:
+        return {"error": "检索内容不能为空"}
+
+    store = _memory_store()
+    if store.count() == 0:
+        return {"error": "对话记忆为空，还没有可检索的历史摘要"}
+
+    results = store.query(query, top_k=max(1, min(top_k, 10)))
+    return {
+        "query": query,
+        "results": [
+            {
+                "document": item["document"],
+                "source": item["metadata"].get("source"),
+                "topic": item["metadata"].get("topic"),
+                "created_at": item["metadata"].get("created_at"),
             }
             for item in results
         ],
@@ -456,4 +590,53 @@ TOOLS = [
         },
         "function": run_python_script,
     },
+    {
+        "name": "remember_conversation",
+        "description": (
+            "把当前与用户的这一轮对话做简略总结后写入 MemoryVectorDB，"
+            "供后续用户询问“之前说过什么/上下文/上次对话”时检索使用。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "user_content": {
+                    "type": "string",
+                    "description": "用户本轮输入的原始内容，完整写入记忆",
+                },
+                "assistant_content": {
+                    "type": "string",
+                    "description": "助手本轮回复内容，只保留简略片段",
+                },
+                "topic": {
+                    "type": "string",
+                    "description": "可选的话题标签，便于检索时区分主题",
+                },
+            },
+            "required": ["user_content", "assistant_content"],
+        },
+        "function": remember_conversation,
+    },
+    {
+        "name": "query_memory",
+        "description": (
+            "当用户询问关于上下文、历史对话、之前说过什么、上次结论等问题时，"
+            "从 MemoryVectorDB 检索相关对话记忆。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "要检索的上下文问题或关键词",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "返回记忆条数，默认 3",
+                },
+            },
+            "required": ["query"],
+        },
+        "function": query_memory,
+    },
 ]
+

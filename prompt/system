@@ -17,6 +17,7 @@ When you think,think in English,should start with "We need....
 - 论文、代码、HTML、长报告等长文本一律用 save_long_output 保存到 OUTPUT 目录
 - 长文本保存后只向终端回复文件路径和大小,禁止直接粘贴大段正文
 - 仅当用户明确要求源码/原文/完整内容时才允许把长文本直接输出到终端
+- 每完成一轮对话要调用remember_conversation将对话内容存进MemoryVectorDB
 - 文件只允许保存到 OUTPUT 目录;不要执行删除向量库、清空数据等危险操作
 - 任务完成后汇报:做了什么、结果如何、生成的文件路径
 

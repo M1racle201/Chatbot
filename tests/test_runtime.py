@@ -9,6 +9,17 @@ from vibechatbot.agents.base import AgentMessage
 from vibechatbot.runtime import Runtime
 
 
+class FakeChat:
+    """带 _summarize_messages 的 fake，用于验证上下文改为摘要生成。"""
+
+    def __init__(self):
+        self.summarized = None
+
+    def _summarize_messages(self, messages):
+        self.summarized = messages
+        return "摘要：先看文件 -> 最终结论"
+
+
 class FakeAgent:
     """快速通道 fake：记录收到的上下文，返回固定结论。"""
 
@@ -48,11 +59,13 @@ class FakePipeline:
 
 
 class TestRuntime(unittest.TestCase):
-    def _make_runtime(self, simple_route=False):
+    def _make_runtime(self, simple_route=False, chat=None):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
+        if chat is None:
+            chat = FakeChat()
         return Runtime(
-            chat=None,
+            chat=chat,
             agent=FakeAgent(),
             pipeline=FakePipeline(),
             is_simple_tool_task=lambda task: simple_route,
@@ -95,6 +108,18 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("最终结论", context["session_history"])
         # 当前任务本身不进入上下文，只有之前的对话
         self.assertNotIn("修改文件", context["session_history"])
+
+    def test_session_context_uses_chat_summarize_messages(self):
+        chat = FakeChat()
+        runtime = self._make_runtime(simple_route=False, chat=chat)
+        runtime.run_task("先看文件")
+        runtime.run_task("修改文件")
+        context = runtime.pipeline.last_context
+        self.assertIn("摘要：先看文件 -> 最终结论", context["session_history"])
+        self.assertIsNotNone(chat.summarized)
+        roles = [m["role"] for m in chat.summarized]
+        self.assertIn("user", roles)
+        self.assertIn("assistant", roles)
 
     def test_step_callback_forwarded_to_pipeline(self):
         runtime = self._make_runtime(simple_route=False)

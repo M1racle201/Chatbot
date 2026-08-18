@@ -6,6 +6,7 @@ import {isWideLayout} from './layout.mjs';
 import {
   Composer,
   Sidebar,
+  ToolHistory,
   Transcript,
   WorkspaceHeader,
   parseSgrMouseSequence,
@@ -165,6 +166,66 @@ test('transcript viewport pins to the latest messages', () => {
 
   assert.match(frame, /历史消息 29/);
   assert.doesNotMatch(frame, /历史消息 0/);
+});
+
+test('tool calls collapse into one summary after final output', () => {
+  const items = [
+    {key: 1, kind: 'user', text: '读取文件并总结'},
+    {key: 2, kind: 'step', stage: 'tool', text: 'load(first.txt)', tool: 'load'},
+    {key: 3, kind: 'step', stage: 'tool_result', text: '文件内容', tool: 'load'},
+    {key: 4, kind: 'assistant', text: '总结完成'},
+  ];
+  const frame = renderToString(
+    <Box flexDirection="column" height={12}>
+      <Transcript items={items} stream="" status="" columns={80} />
+    </Box>,
+    {columns: 80, rows: 12}
+  );
+
+  assert.match(frame, /工具调用 2 条/);
+  assert.match(frame, /点击展开/);
+  assert.doesNotMatch(frame, /load\(first\.txt\)/);
+});
+
+test('new round keeps previous round tools collapsed', () => {
+  const items = [
+    {key: 1, kind: 'user', text: '任务1'},
+    {key: 2, kind: 'step', stage: 'tool', text: 'load(a.txt)', tool: 'load'},
+    {key: 3, kind: 'step', stage: 'tool_result', text: 'A内容', tool: 'load'},
+    {key: 4, kind: 'assistant', text: '任务1完成'},
+    {key: 5, kind: 'user', text: '任务2'},
+    {key: 6, kind: 'step', stage: 'tool', text: 'load(b.txt)', tool: 'load'},
+    {key: 7, kind: 'step', stage: 'tool_result', text: 'B内容', tool: 'load'},
+  ];
+  const frame = renderToString(
+    <Box flexDirection="column" height={24}>
+      <Transcript items={items} stream="" status="" columns={80} />
+    </Box>,
+    {columns: 80, rows: 24}
+  );
+
+  assert.match(frame, /工具调用 2 条/);
+  // 第二轮正在执行，当前任务工具应展开；上一轮工具应保持折叠。
+  assert.match(frame, /b\.txt/);
+  assert.doesNotMatch(frame, /a\.txt/);
+});
+
+test('expanded tool history shows the original tool calls', () => {
+  const items = [
+    {key: 1, kind: 'step', stage: 'tool', text: 'load(first.txt)', tool: 'load'},
+    {key: 2, kind: 'step', stage: 'tool_result', text: '文件内容', tool: 'load'},
+  ];
+  const frame = renderToString(
+    <Box flexDirection="column" height={12}>
+      <ToolHistory items={items} collapsed={false} contentWidth={68} />
+    </Box>,
+    {columns: 80, rows: 12}
+  );
+
+  assert.match(frame, /工具调用 2 条/);
+  assert.match(frame, /Tool call · load/);
+  assert.match(frame, /first\.txt/);
+  assert.match(frame, /文件内容/);
 });
 
 test('composer collapses oversized pasted text into a line/row summary', () => {

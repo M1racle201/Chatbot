@@ -1,6 +1,7 @@
 """应用配置：环境变量 + 项目根/数据目录统一解析。"""
 
 import os
+import sys
 
 from dotenv import load_dotenv
 
@@ -21,8 +22,15 @@ def _find_project_root(start: str) -> str:
     return os.getcwd()
 
 
+def _default_project_root() -> str:
+    """PyInstaller 打包后以 exe 所在目录作为项目根，便于数据/提示词外置。"""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return _find_project_root(_PACKAGE_DIR)
+
+
 # 项目根目录（可用 VIBECHAT_ROOT 环境变量显式覆盖）
-PROJECT_ROOT = os.getenv("VIBECHAT_ROOT", _find_project_root(_PACKAGE_DIR))
+PROJECT_ROOT = os.getenv("VIBECHAT_ROOT", _default_project_root())
 
 # 加载项目根目录下的 .env（绝对路径，任意工作目录下运行都能找到）
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))

@@ -53,6 +53,10 @@ class TestInkUiLayout(unittest.TestCase):
         self.assertIn("height={rows}", APP_SOURCE)
         self.assertNotIn(r"\x1b[2J", APP_SOURCE)
 
+    def test_app_discards_rejected_stream_output_on_retry(self):
+        self.assertIn("verify_reject", APP_SOURCE)
+        self.assertIn("setStream('')", APP_SOURCE)
+
     def test_unified_task_mode_and_commands(self):
         for command in (
             "/clear_history",
