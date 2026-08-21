@@ -24,6 +24,15 @@ PROMPT=prompt/system
 
 > `.env` 须为无 BOM 的 UTF-8，程序自动从项目根加载。可选：`VIBECHAT_ROOT`（根目录覆盖）、`VIBECHAT_DATA_DIR`（数据根，默认 `data/`）、`HISTORY_FILE`。
 
+如果你要启用 MCP 工具，再做两步：
+
+1. 把 `config/mcp.json.example` 复制为 `config/mcp.json`。
+2. 在 `.env` 里补上 `MCP_CONFIG=config/mcp.json`，并为对应的 MCP Server 配好环境变量，比如 `FIRECRAWL_API_KEY=your-key-here`。
+
+MCP server 的命令需要由用户预先配置，模型不会动态启动任意命令。缺少 `mcp.json` 时，程序仍然只使用本地工具，不会影响原有任务流。Firecrawl 这里只是一个可替换示例，你也可以改成 Playwright 或其他 MCP server。使用 MCP server 需要本机有 Node.js / `npx`，以及对应依赖。
+
+浏览器 / 网页类任务会进入 Agentic Pipeline，任务领域本身不绑定；是否接入 MCP 只是工具层的选择，不改变任务路由的核心逻辑。
+
 ## 运行
 
 ```bash
