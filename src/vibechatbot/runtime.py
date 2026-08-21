@@ -19,6 +19,7 @@ from vibechatbot.tools import file_tools
 from vibechatbot.agents import ExecutorAgent, Pipeline, RewriterAgent, VerifierAgent
 from vibechatbot.agents.pipeline import is_simple_tool_task
 from vibechatbot.chat import Chat
+from vibechatbot.mcp_registry import MCPRegistry
 
 MAX_SESSION_ROUNDS = 5  # 注入给 agent 的最近任务轮数
 
@@ -33,6 +34,8 @@ class Runtime:
         pipeline,
         is_simple_tool_task,
         session_dir: str = None,
+        mcp_config_path: str = None,
+        mcp_executor=None,
     ):
         self.chat = chat
         file_tools.set_memory_summarizer(
@@ -42,6 +45,8 @@ class Runtime:
         self.pipeline = pipeline
         self.is_simple_tool_task = is_simple_tool_task
         self.session_dir = session_dir  # None 时按任务路由落到 TASK/AGENTIC 目录
+        self.mcp_config_path = mcp_config_path
+        self.mcp_executor = mcp_executor
         self.session_context = []  # 最近几轮 (task, output)，用于上下文注入
         self.session_records = []  # 本会话全部任务记录（写入存档）
         self.session_file = None  # 会话存档路径，首次任务时确定
@@ -66,7 +71,7 @@ class Runtime:
             result = {"route": "fast", "output": output}
         else:
             final = asyncio.run(
-                self.pipeline.run(
+                self._run_pipeline_task(
                     task,
                     context=context,
                     stream_callback=stream_callback,
@@ -92,6 +97,30 @@ class Runtime:
         self.session_context.append((task, output))
         self._save_session()
         return result
+
+    async def _run_pipeline_task(
+        self, task: str, context=None, stream_callback=None, step_callback=None
+    ):
+        if self.mcp_executor is None:
+            return await self.pipeline.run(
+                task,
+                context=context,
+                stream_callback=stream_callback,
+                step_callback=step_callback,
+            )
+
+        registry = MCPRegistry.from_config(self.mcp_config_path or config.MCP_CONFIG)
+        async with registry:
+            self.mcp_executor.set_mcp_registry(registry)
+            try:
+                return await self.pipeline.run(
+                    task,
+                    context=context,
+                    stream_callback=stream_callback,
+                    step_callback=step_callback,
+                )
+            finally:
+                self.mcp_executor.set_mcp_registry(None)
 
     def _build_context(self):
         """把最近几轮任务对话整理成上下文；无历史时返回 None。
@@ -154,4 +183,6 @@ def build_runtime() -> Runtime:
         agent=agent_client,
         pipeline=agentic_pipeline,
         is_simple_tool_task=is_simple_tool_task,
+        mcp_config_path=config.MCP_CONFIG,
+        mcp_executor=agentic_executor,
     )

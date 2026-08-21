@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """文件加载工具：将 Word / txt / PDF 文件输出为纯文本字符串，并支持长文本分块。"""
 
 import os
@@ -10,7 +12,6 @@ import tempfile
 from datetime import datetime
 
 from vibechatbot import config
-from vibechatbot.vector_store import VectorStore
 
 # Word 文档的命名空间
 _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -28,10 +29,12 @@ OUTPUT_DIR = config.OUTPUT_DIR
 _SAFE_FILENAME = re.compile(r"^[\w\u4e00-\u9fff.\-]+$")
 
 
-def get_store() -> VectorStore:
+def get_store() -> "VectorStore":
     """获取向量库实例（惰性创建）。"""
     global _store
     if _store is None:
+        from vibechatbot.vector_store import VectorStore
+
         _store = VectorStore()
     return _store
 
@@ -183,7 +186,9 @@ def set_memory_summarizer(summarizer):
     _memory_summarizer = summarizer
 
 
-def _memory_store() -> VectorStore:
+def _memory_store() -> "VectorStore":
+    from vibechatbot.vector_store import VectorStore
+
     return VectorStore(collection_name=MEMORY_COLLECTION)
 
 

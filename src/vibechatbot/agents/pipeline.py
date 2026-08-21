@@ -118,6 +118,19 @@ _SIMPLE_TOOL_KEYWORDS = (
     "读取", "读文件", "保存", "生成", "写入", "输出",
     "load", "save_file", "add_documents", "入库",
 )
+_MCP_TASK_KEYWORDS = (
+    "浏览器",
+    "网页",
+    "网站",
+    "搜索",
+    "在线查询",
+    "联网",
+    "search",
+    "research",
+    "browse",
+    "web",
+    "browser",
+)
 
 
 def is_simple_tool_task(task: str) -> bool:
@@ -125,4 +138,7 @@ def is_simple_tool_task(task: str) -> bool:
 
     启发式：命中任意简单工具关键词即判定为 True。关键词可在此处调整。
     """
-    return any(keyword in task for keyword in _SIMPLE_TOOL_KEYWORDS)
+    normalized_task = task.lower()
+    if any(keyword in normalized_task for keyword in _MCP_TASK_KEYWORDS):
+        return False
+    return any(keyword in normalized_task for keyword in _SIMPLE_TOOL_KEYWORDS)

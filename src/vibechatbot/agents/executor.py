@@ -138,6 +138,7 @@ class ExecutorAgent(BaseAgent):
         similarity_threshold: float = SIMILARITY_THRESHOLD,
         max_evidence_items: int = MAX_EVIDENCE_ITEMS,
         max_evidence_chars: int = MAX_EVIDENCE_CHARS,
+        mcp_registry=None,
     ):
         super().__init__(name=name, chat=chat)
         if llm is None and chat is None:
@@ -145,6 +146,7 @@ class ExecutorAgent(BaseAgent):
         self.llm = llm
         self.tools = tools  # None 时在使用点延迟加载
         self.tool_executor = tool_executor  # None 时在使用点延迟加载
+        self.mcp_registry = mcp_registry
         self.prompt_file = prompt_file
         self.executor_prompt = self._load_prompt()
         self.max_steps = max_steps
@@ -153,6 +155,9 @@ class ExecutorAgent(BaseAgent):
         self.similarity_threshold = similarity_threshold
         self.max_evidence_items = max_evidence_items
         self.max_evidence_chars = max_evidence_chars
+
+    def set_mcp_registry(self, registry) -> None:
+        self.mcp_registry = registry
 
     def _load_prompt(self) -> str:
         """读取 prompt/executor 作为执行提示词;文件缺失时用内置默认提示词。"""
@@ -165,24 +170,30 @@ class ExecutorAgent(BaseAgent):
 
     async def _call_llm(self, messages: list):
         """调用 LLM:优先注入的 llm,否则用 chat 客户端(带工具定义)。"""
+        tools = self._tools_for_task()
         if self.llm is not None:
-            result = self.llm(messages, tools=self.tools)
+            result = self.llm(messages, tools=tools)
         else:
-            if self.tools is None:
-                self.tools = _default_tools()
             if self.stream_callback is not None:
                 # 执行器是唯一向用户输出结论的 agent，最终结论才需要流式
                 content, tool_calls = self.chat.stream_completion(
-                    messages, tools=self.tools, on_chunk=self.stream_callback
+                    messages, tools=tools, on_chunk=self.stream_callback
                 )
                 result = _StreamReply(content, tool_calls or None)
             else:
                 result = self.chat._create_with_retry(
-                    model=self.chat.model, messages=messages, tools=self.tools
+                    model=self.chat.model, messages=messages, tools=tools
                 )
         if inspect.isawaitable(result):
             result = await result
         return result
+
+    def _tools_for_task(self) -> list:
+        local_tools = self.tools if self.tools is not None else _default_tools()
+        remote_tools = []
+        if self.mcp_registry is not None:
+            remote_tools = self.mcp_registry.tool_definitions()
+        return list(local_tools) + list(remote_tools)
 
     async def _process(self, message: AgentMessage) -> str:
         agent_messages = [{"role": "system", "content": self.executor_prompt}]
@@ -216,8 +227,6 @@ class ExecutorAgent(BaseAgent):
                         f"未生成新结论;最近执行工具: {', '.join(tool_names)}"
                     )
                 for tool_call in message_data["tool_calls"]:
-                    if self.tool_executor is None:
-                        self.tool_executor = _default_tool_executor()
                     name = tool_call["function"]["name"]
                     try:
                         arguments = json.loads(
@@ -230,9 +239,21 @@ class ExecutorAgent(BaseAgent):
                         self.step_callback(
                             "tool", f"{name}({arg_text})", tool=name
                         )
-                    result = await asyncio.to_thread(
-                        self.tool_executor, name, arguments
-                    )
+                    if (
+                        self.mcp_registry is not None
+                        and self.mcp_registry.has_tool(name)
+                    ):
+                        result = await self.mcp_registry.call(name, arguments)
+                    else:
+                        local_executor = self.tool_executor
+                        if local_executor is None:
+                            local_executor = _default_tool_executor()
+                            self.tool_executor = local_executor
+                        result = await asyncio.to_thread(
+                            local_executor, name, arguments
+                        )
+                        if inspect.isawaitable(result):
+                            result = await result
                     if self.step_callback is not None:
                         self.step_callback(
                             "tool_result",
@@ -259,9 +280,7 @@ class ExecutorAgent(BaseAgent):
             data = json.loads(result)
         except json.JSONDecodeError:
             return
-        if not isinstance(data, dict):  # 工具可能返回数组等非对象结果
-            return
-        if tool_name == "query_documents":
+        if tool_name == "query_documents" and isinstance(data, dict):
             for item in data.get("results", []):
                 if len(evidence) >= self.max_evidence_items:
                     return
@@ -270,12 +289,80 @@ class ExecutorAgent(BaseAgent):
                     evidence.append(
                         {"source": item.get("source"), "content": content}
                     )
-        elif tool_name == "load":
+            return
+        elif tool_name == "load" and isinstance(data, dict):
             if len(evidence) >= self.max_evidence_items:
                 return
             content = (data.get("content") or "")[: self.max_evidence_chars]
             if content:
                 evidence.append({"source": data.get("path"), "content": content})
+                return
+        self._collect_structured_evidence(evidence, data)
+
+    def _collect_structured_evidence(self, evidence: list, data) -> None:
+        for item in self._structured_items(data):
+            if len(evidence) >= self.max_evidence_items:
+                return
+            entry = self._evidence_entry(item)
+            if entry is not None:
+                evidence.append(entry)
+
+    def _structured_items(self, data):
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)]
+        if not isinstance(data, dict):
+            return []
+        for key in ("results", "data"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+            if isinstance(value, dict):
+                return [value]
+        if any(
+            field in data
+            for field in (
+                "url",
+                "title",
+                "content",
+                "document",
+                "markdown",
+                "text",
+                "source",
+                "path",
+            )
+        ):
+            return [data]
+        return []
+
+    def _evidence_entry(self, item: dict):
+        source = (
+            item.get("url")
+            or item.get("source")
+            or item.get("path")
+            or item.get("title")
+        )
+        title = self._clean_text(item.get("title"))
+        body = self._clean_text(
+            item.get("content")
+            or item.get("document")
+            or item.get("markdown")
+            or item.get("text")
+        )
+        parts = [part for part in (title, body) if part]
+        if not source and not parts:
+            return None
+        content = "\n".join(parts)[: self.max_evidence_chars]
+        if not content:
+            return None
+        return {"source": source, "content": content}
+
+    @staticmethod
+    def _clean_text(value) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        return str(value).strip()
 
     def _flush_evidence(self, message: AgentMessage, evidence: list) -> None:
         """把收集到的依据片段写入共享上下文,供核查器对照。"""

@@ -55,6 +55,10 @@ PROMPT_DIR = os.path.join(PROJECT_ROOT, "prompt")
 PROMPT_FILE = os.path.normpath(
     os.path.join(PROJECT_ROOT, os.getenv("PROMPT", "prompt/system"))
 )
+MCP_CONFIG = os.getenv(
+    "MCP_CONFIG",
+    os.path.join(PROJECT_ROOT, "config", "mcp.json"),
+)
 
 # ---- DeepSeek API ----
 DEEPSEEK_API = os.getenv("DEEPSEEK_API", "").strip()
