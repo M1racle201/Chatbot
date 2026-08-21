@@ -4,7 +4,7 @@
 用法:
     python scripts/ingest_knowledge.py [path ...]
 
-默认扫描 knowledge/ 目录；支持 txt/md/html/json/yaml/常见代码文件/docx/pdf。
+支持 txt/md/html/json/yaml/常见代码文件/docx/pdf。
 """
 
 import argparse
@@ -40,7 +40,7 @@ def collect_files(paths):
 
 def main():
     parser = argparse.ArgumentParser(description="批量入库研发知识库")
-    parser.add_argument("paths", nargs="*", default=["knowledge"], help="文件或目录")
+    parser.add_argument("paths", nargs="+", help="要入库的文件或目录")
     args = parser.parse_args()
 
     files = collect_files(args.paths)
@@ -56,11 +56,14 @@ def main():
             print(f"FAIL  {file}: {result['error']}")
             failed += 1
         else:
-            print(f"OK    {file}: chunks={result.get('chunks')}")
+            print(
+                f"OK    {file}: parents={result.get('parents')}, "
+                f"children={result.get('children')}"
+            )
             ok += 1
 
     count = VectorStore().count()
-    print(f"\n完成: 成功 {ok}, 失败 {failed}, 向量库当前块数 {count}")
+    print(f"\n完成: 成功 {ok}, 失败 {failed}, 向量库当前记录数 {count}")
     return 0 if failed == 0 else 2
 
 
