@@ -1,8 +1,8 @@
-# Agent 接入 MCP 研究工具设计
+# Agent 接入通用浏览器 MCP 设计
 
 ## 目标
 
-让当前 VibeChatbot Agent 能够读取配置并动态使用 Firecrawl 等外部 MCP Server，完成“搜索软件工程岗位、提取字段、去重总结、保存为文档”的端到端任务。
+让当前 VibeChatbot Agent 能够读取配置并动态使用 Firecrawl、Playwright 或其他外部浏览器 MCP Server，完成用户提出的通用网页任务。岗位搜索只是一个示例，不作为 Agent 的固定领域能力。
 
 新增 MCP 工具时，Agent 不增加专用工具函数或专用结果变量；工具 schema 和调用均由 MCP Registry 动态处理。
 
@@ -19,7 +19,7 @@ Runtime.run_task() 是同步入口，每次 Pipeline 任务通过 asyncio.run() 
 
 采用任务级 MCP 生命周期：
 
-1. Runtime 识别到网页研究任务后进入 Pipeline。
+1. Runtime 识别到需要外部 MCP 的任务后进入 Pipeline。
 2. Pipeline 的同一个异步生命周期内创建 MCP Registry。
 3. Registry 读取配置、启动每个已启用 MCP Server、初始化 ClientSession 并发现工具。
 4. Executor 将本地工具和 MCP 工具 schema 合并后发送给模型。
@@ -32,7 +32,7 @@ Runtime.run_task() 是同步入口，每次 Pipeline 任务通过 asyncio.run() 
 
 ## 配置
 
-新增可选配置文件 config/mcp.json.example，实际配置路径由 MCP_CONFIG 指定，默认是 config/mcp.json。配置只保存命令、参数和环境变量名，不保存密钥值：
+新增可选配置文件 config/mcp.json.example，实际配置路径由 MCP_CONFIG 指定，默认是 config/mcp.json。配置只保存命令、参数和环境变量名，不保存密钥值。Firecrawl 仅作为配置示例，Registry 不包含任何 Firecrawl 专用逻辑：
 
 ~~~json
 {
@@ -69,21 +69,17 @@ Runtime.run_task() 是同步入口，每次 Pipeline 任务通过 asyncio.run() 
 - 本地同步工具继续通过线程执行。
 - MCP 异步工具通过 Registry 直接 await。
 - 所有工具结果都以字符串放入 role=tool 消息。
-- 通用证据抽取从工具结果中识别 results、data、url、title、content、markdown 等字段，不按 Firecrawl 工具名写分支。
+- 通用证据抽取从工具结果中识别 results、data、url、title、content、markdown 等字段，不按具体 MCP Server 或领域名称写分支。
 
 修改 Runtime 和 Pipeline 的任务级注入，使 Registry 只在一次 Pipeline 任务的异步生命周期内有效，并在异常时也关闭连接。
 
-修改 is_simple_tool_task()：网页、搜索、岗位、招聘、职位、研究等任务优先走 Pipeline，即使任务文字同时包含“生成”或“保存”，也不能被同步快速通道绕过。
+修改 is_simple_tool_task()：浏览器、网页、搜索、在线查询、联网、research、browse 等需要外部 MCP 的任务优先走 Pipeline，即使任务文字同时包含“生成”或“保存”，也不能被同步快速通道绕过。路由规则保持能力导向，不加入岗位、招聘等领域关键词。
 
 ## Prompt 与输出
 
-更新 prompt/executor：
+本次不修改任何提示词文件，包括 prompt/executor 和 prompt/system。MCP 接入只扩展 Agent 可发现和调用的工具集合，具体任务目标、输出格式和是否保存文档继续由用户任务与现有提示词共同决定。
 
-- 明确岗位研究字段：公司、职位、地点、远程状态、薪资、发布时间、来源 URL。
-- 优先官方招聘页，去重并标记未知信息。
-- 需要多来源搜索和网页内容提取时使用 MCP 工具。
-- 最终调用 save_long_output 保存 Markdown 报告。
-- 结论保留来源 URL，不把大段网页原文直接输出到终端。
+现有 save_long_output 等本地工具仍作为普通工具提供；Agent 是否调用它不由 MCP Registry 强制决定。
 
 ## 错误与安全
 
@@ -103,7 +99,7 @@ Runtime.run_task() 是同步入口，每次 Pipeline 任务通过 asyncio.run() 
 - 任意 MCP 工具名和参数转发。
 - Executor 合并本地与远程 schema，并正确区分同步本地工具和异步 MCP 工具。
 - MCP server 启动失败时清理已启动的 session。
-- 网页研究任务不会走简单工具快速通道。
+- 浏览器/网页/在线查询等通用 MCP 任务不会走简单工具快速通道，岗位以外的任务也适用。
 - 现有本地工具和既有 Executor 测试保持通过。
 
 真实联调使用已配置的 Firecrawl Server；没有 API key 时只运行 fake session 测试，不把外部服务可用性当作单元测试前置条件。
@@ -113,5 +109,5 @@ Runtime.run_task() 是同步入口，每次 Pipeline 任务通过 asyncio.run() 
 - 本次不实现 Browserbase、登录态浏览器或云浏览器账号管理。
 - 本次不修改顶层 mcp/server.py demo 工具。
 - 本次不重写同步快速通道 Agent。
-- 本次不新增 Word 文档排版系统，首版保存 Markdown；后续可单独接入 docx 生成。
-
+- 本次不修改现有提示词，也不把 Agent 固定成岗位研究或其他单一领域 Agent。
+- 本次不新增 Word 文档排版系统；文档保存仍由现有本地工具和现有提示词决定。
