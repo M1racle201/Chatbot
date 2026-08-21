@@ -178,6 +178,16 @@ class TestMCPRegistryCalls(unittest.TestCase):
 
     def test_structured_content_takes_priority_over_text(self):
         session = FakeSession(
+            tools=[
+                SimpleNamespace(
+                    name="search",
+                    description="Search the web",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                    },
+                )
+            ],
             result=SimpleNamespace(
                 content=[SimpleNamespace(text="fallback text")],
                 structuredContent={"items": [{"url": "https://example.com"}]},
@@ -212,6 +222,16 @@ class TestMCPRegistryCalls(unittest.TestCase):
 
     def test_is_error_results_include_top_level_error(self):
         session = FakeSession(
+            tools=[
+                SimpleNamespace(
+                    name="search",
+                    description="Search the web",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                    },
+                )
+            ],
             result=SimpleNamespace(
                 content=[SimpleNamespace(text="blocked")],
                 isError=True,
@@ -262,6 +282,8 @@ class TestMCPRegistryStartupFailure(unittest.TestCase):
         second_context = AsyncContext(("read-2", "write-2"))
         first_session = FakeSession()
         second_session = FailingSession()
+        first_session_context = AsyncContext(first_session)
+        second_session_context = AsyncContext(second_session)
 
         registry = mcp_registry.MCPRegistry.from_server_specs(
             [
@@ -279,8 +301,8 @@ class TestMCPRegistryStartupFailure(unittest.TestCase):
             mcp_registry,
             "ClientSession",
             side_effect=[
-                AsyncContext(first_session),
-                AsyncContext(second_session),
+                first_session_context,
+                second_session_context,
             ],
             create=True,
         ):
@@ -297,6 +319,10 @@ class TestMCPRegistryStartupFailure(unittest.TestCase):
         self.assertTrue(first_context.exited)
         self.assertTrue(second_context.entered)
         self.assertTrue(second_context.exited)
+        self.assertTrue(first_session_context.entered)
+        self.assertTrue(first_session_context.exited)
+        self.assertTrue(second_session_context.entered)
+        self.assertTrue(second_session_context.exited)
         self.assertIn("broken", str(error))
 
 
