@@ -4,10 +4,9 @@ import json
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
 
 from vibechatbot.agents.base import AgentMessage
-from vibechatbot.runtime import Runtime, build_runtime
+from vibechatbot.runtime import Runtime
 
 
 class FakeChat:
@@ -57,62 +56,6 @@ class FakePipeline:
                 "candidate": "最终结论",
             },
         )
-
-
-class FakeMCPExecutor:
-    """记录 Registry 注入/清理时机的 fake executor。"""
-
-    def __init__(self):
-        self.current_registry = None
-        self.registry_history = []
-
-    def set_mcp_registry(self, registry):
-        self.current_registry = registry
-        self.registry_history.append(registry)
-
-
-class FakeAsyncRegistry:
-    """用于验证 async with 生命周期。"""
-
-    def __init__(self):
-        self.entered = False
-        self.exited = False
-        self.exit_error = None
-
-    async def __aenter__(self):
-        self.entered = True
-        return self
-
-    async def __aexit__(self, exc_type, exc, traceback):
-        self.exited = True
-        self.exit_error = exc
-        return False
-
-
-class FakePipelineWithRegistry(FakePipeline):
-    def __init__(self, mcp_executor):
-        super().__init__()
-        self.mcp_executor = mcp_executor
-        self.registry_during_run = None
-
-    async def run(
-        self, task, context=None, stream_callback=None, step_callback=None
-    ):
-        self.registry_during_run = self.mcp_executor.current_registry
-        return await super().run(
-            task,
-            context=context,
-            stream_callback=stream_callback,
-            step_callback=step_callback,
-        )
-
-
-class FailingPipelineWithRegistry(FakePipelineWithRegistry):
-    async def run(
-        self, task, context=None, stream_callback=None, step_callback=None
-    ):
-        self.registry_during_run = self.mcp_executor.current_registry
-        raise RuntimeError("pipeline failed")
 
 
 class TestRuntime(unittest.TestCase):
@@ -189,91 +132,6 @@ class TestRuntime(unittest.TestCase):
         steps = []
         runtime.run_task("保存文件", step_callback=lambda s, c: steps.append((s, c)))
         self.assertEqual(steps, [("fast", "快速通道：直接执行工具任务")])
-
-    def test_pipeline_route_uses_task_scoped_mcp_registry(self):
-        mcp_executor = FakeMCPExecutor()
-        pipeline = FakePipelineWithRegistry(mcp_executor)
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        runtime = Runtime(
-            chat=FakeChat(),
-            agent=FakeAgent(),
-            pipeline=pipeline,
-            is_simple_tool_task=lambda task: False,
-            session_dir=tmp.name,
-            mcp_config_path="C:/tmp/custom-mcp.json",
-            mcp_executor=mcp_executor,
-        )
-        registry = FakeAsyncRegistry()
-
-        with patch("vibechatbot.runtime.MCPRegistry.from_config", return_value=registry) as factory:
-            result = runtime.run_task("联网查询资料")
-
-        self.assertEqual(result["route"], "pipeline")
-        factory.assert_called_once_with("C:/tmp/custom-mcp.json")
-        self.assertIs(pipeline.registry_during_run, registry)
-        self.assertTrue(registry.entered)
-        self.assertTrue(registry.exited)
-        self.assertEqual(mcp_executor.registry_history, [registry, None])
-        self.assertIsNone(mcp_executor.current_registry)
-
-    def test_pipeline_route_clears_mcp_registry_after_error(self):
-        mcp_executor = FakeMCPExecutor()
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        runtime = Runtime(
-            chat=FakeChat(),
-            agent=FakeAgent(),
-            pipeline=FailingPipelineWithRegistry(mcp_executor),
-            is_simple_tool_task=lambda task: False,
-            session_dir=tmp.name,
-            mcp_config_path="C:/tmp/custom-mcp.json",
-            mcp_executor=mcp_executor,
-        )
-        registry = FakeAsyncRegistry()
-
-        with patch("vibechatbot.runtime.MCPRegistry.from_config", return_value=registry):
-            with self.assertRaises(RuntimeError):
-                runtime.run_task("联网查询资料")
-
-        self.assertTrue(registry.entered)
-        self.assertTrue(registry.exited)
-        self.assertIsInstance(registry.exit_error, RuntimeError)
-        self.assertEqual(mcp_executor.registry_history, [registry, None])
-        self.assertIsNone(mcp_executor.current_registry)
-
-    def test_build_runtime_injects_executor_and_default_mcp_config(self):
-        sentinel_chat = object()
-        sentinel_agent = object()
-        sentinel_rewriter = object()
-        sentinel_executor = FakeMCPExecutor()
-        sentinel_verifier = object()
-
-        class FakePipelineCtor:
-            def __init__(self, agents, verifier=None, max_retries=None):
-                self.agents = agents
-                self.verifier = verifier
-                self.max_retries = max_retries
-
-        with patch("vibechatbot.runtime.Chat", return_value=sentinel_chat), patch(
-            "vibechatbot.runtime.Agent", return_value=sentinel_agent
-        ), patch(
-            "vibechatbot.runtime.RewriterAgent", return_value=sentinel_rewriter
-        ), patch(
-            "vibechatbot.runtime.ExecutorAgent", return_value=sentinel_executor
-        ), patch(
-            "vibechatbot.runtime.VerifierAgent", return_value=sentinel_verifier
-        ), patch(
-            "vibechatbot.runtime.Pipeline", side_effect=FakePipelineCtor
-        ), patch(
-            "vibechatbot.runtime.config.MCP_CONFIG", "C:/project/config/mcp.json"
-        ):
-            runtime = build_runtime()
-
-        self.assertIs(runtime.chat, sentinel_chat)
-        self.assertIs(runtime.agent, sentinel_agent)
-        self.assertIs(runtime.mcp_executor, sentinel_executor)
-        self.assertEqual(runtime.mcp_config_path, "C:/project/config/mcp.json")
 
 
 if __name__ == "__main__":

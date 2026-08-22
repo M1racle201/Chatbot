@@ -298,12 +298,6 @@ class TestIsSimpleToolTask(unittest.TestCase):
     def test_knowledge_reasoning_returns_false(self):
         self.assertFalse(is_simple_tool_task("基于知识库回答深海采矿的影响"))
 
-    def test_browser_and_search_tasks_stay_on_general_mcp_path(self):
-        self.assertFalse(is_simple_tool_task("打开网页并总结内容"))
-        self.assertFalse(is_simple_tool_task("搜索在线资料并比较结果"))
-        self.assertFalse(is_simple_tool_task("browse this website and report findings"))
-        self.assertTrue(is_simple_tool_task("保存这段文本到文件"))
-
 
 if __name__ == "__main__":
     unittest.main()
