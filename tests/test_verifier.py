@@ -1,10 +1,16 @@
 """VerifierAgent(Agent3 核查器)单元测试。"""
 
 import asyncio
+import os
 import unittest
 
 from vibechatbot.agents.base import AgentMessage
 from vibechatbot.agents.verifier import VerifierAgent
+
+
+PROMPT_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "prompt", "verifier"
+)
 
 
 class JsonLLM:
@@ -20,6 +26,14 @@ class JsonLLM:
 
 
 class TestVerifierAgent(unittest.TestCase):
+    def test_prompt_does_not_reject_complete_answer_for_partial_evidence(self):
+        """证据片段不完整时,完整且无冲突的回答不应被要求重搜或打回。"""
+        with open(PROMPT_FILE, encoding="utf-8") as file:
+            prompt = file.read()
+        self.assertIn("检索片段不完整", prompt)
+        self.assertIn("不要直接判定回答缺失", prompt)
+        self.assertIn("只有回答与检索原文冲突", prompt)
+
     def test_passed_verdict(self):
         llm = JsonLLM('{"passed": true, "reason": "有依据", "suggestion": ""}')
         agent = VerifierAgent(llm=llm)
