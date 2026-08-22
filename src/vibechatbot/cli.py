@@ -2,7 +2,9 @@
 
 from vibechatbot import config
 from vibechatbot.runtime import build_runtime
+from vibechatbot.skill_sync import sync_skills_prompts
 
+sync_skills_prompts()
 runtime = build_runtime()
 chat_client = runtime.chat
 

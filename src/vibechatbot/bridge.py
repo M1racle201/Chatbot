@@ -18,6 +18,7 @@ import json
 import sys
 
 from vibechatbot.runtime import build_runtime
+from vibechatbot.skill_sync import sync_skills_prompts
 
 
 def _run_sync_or_async(fn, *args):
@@ -147,6 +148,7 @@ class Bridge:
 
 def main():
     """组装真实后端并启动桥。"""
+    sync_skills_prompts()
     runtime = build_runtime()
     bridge = Bridge(chat=runtime.chat, run_task=runtime.run_task)
     bridge.run()

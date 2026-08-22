@@ -146,13 +146,13 @@ class VectorStore:
         self.collection.add(documents=texts, metadatas=metadatas, ids=ids)
         return ids
 
-    def query(self, text: str, top_k: int = 5) -> list:
+    def query(self, text: str, top_k: int = 5, where: dict = None) -> list:
         """按语义检索最相关的文本块，返回文档与元数据列表。"""
         query_embeddings = self.embedding_function(["query:" + text])
-        result = self.collection.query(
-            query_embeddings=query_embeddings,
-            n_results=top_k,
-        )
+        kwargs = {"query_embeddings": query_embeddings, "n_results": top_k}
+        if where is not None:
+            kwargs["where"] = where
+        result = self.collection.query(**kwargs)
         documents = result["documents"][0] if result.get("documents") else []
         metadatas = result["metadatas"][0] if result.get("metadatas") else []
         return [
@@ -160,6 +160,21 @@ class VectorStore:
             for doc, meta in zip(documents, metadatas)
         ]
 
+    def get_by_ids(self, ids: list) -> list:
+        """按 id 批量取回文档与元数据。"""
+        if not ids:
+            return []
+        result = self.collection.get(ids=ids)
+        return [
+            {
+                "id": record_id,
+                "document": document,
+                "metadata": metadata,
+            }
+            for record_id, document, metadata in zip(
+                result["ids"], result["documents"], result["metadatas"]
+            )
+        ]
     def count(self) -> int:
         """返回向量库中的文本块数量。"""
         return self.collection.count()

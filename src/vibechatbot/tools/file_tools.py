@@ -11,7 +11,15 @@ import sys
 import tempfile
 from datetime import datetime
 
+import hashlib
 from vibechatbot import config
+from vibechatbot.security_guard import check_python_script
+from vibechatbot.vector_store import VectorStore
+from vibechatbot.chunking import (
+    CHILD_TOP_K,
+    MAX_PARENTS,
+    split_parent_children,
+)
 
 # Word 文档的命名空间
 _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -139,38 +147,85 @@ def load_file(path: str, chunk: bool = False) -> dict:
 
 
 def add_documents(path: str) -> dict:
-    """读取文件、自动分块并存入向量数据库，供后续语义检索。"""
+    """读取文件，按父子文档分块后存入向量数据库。"""
     path = path.strip().strip('"').strip("'")
-    loaded = load_file(path, chunk=True)
+    loaded = load_file(path)
     if "error" in loaded:
         return loaded
-    chunks = loaded["chunks"]
+    groups = split_parent_children(loaded["content"])
     store = get_store()
-    metadatas = [
-        {"source": path, "index": index, "total": len(chunks)}
-        for index in range(len(chunks))
-    ]
-    ids = store.add_texts(chunks, metadatas=metadatas)
-    return {"path": path, "chunks": len(chunks), "added_ids": len(ids)}
+    texts = []
+    metadatas = []
+    ids = []
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    source_hash = hashlib.md5(path.encode("utf-8")).hexdigest()[:10]
+    child_count = 0
+    for group in groups:
+        parent_id = f"p_{timestamp}_{source_hash}_{group['parent_index']}"
+        texts.append(group["parent"])
+        metadatas.append(
+            {
+                "kind": "parent",
+                "source": path,
+                "parent_id": parent_id,
+                "parent_index": group["parent_index"],
+                "total_children": len(group["children"]),
+            }
+        )
+        ids.append(parent_id)
+        for child_index, child in enumerate(group["children"]):
+            texts.append(child)
+            metadatas.append(
+                {
+                    "kind": "child",
+                    "source": path,
+                    "parent_id": parent_id,
+                    "parent_index": group["parent_index"],
+                    "child_index": child_index,
+                    "total_children": len(group["children"]),
+                }
+            )
+            ids.append(f"{parent_id}_c{child_index}")
+            child_count += 1
+    store.add_texts(texts, metadatas=metadatas, ids=ids)
+    return {
+        "path": path,
+        "parents": len(groups),
+        "children": child_count,
+        "added_ids": len(ids),
+    }
 
 
-def query_documents(query: str, top_k: int = 5) -> dict:
-    """语义检索向量库中最相关的文档片段。"""
+def query_documents(query: str, top_k: int = MAX_PARENTS) -> dict:
+    """先检索子文档，再按 parent_id 返回对应的父文档上下文。"""
     store = get_store()
     if store.count() == 0:
         return {"error": "向量库为空，请先用 add_documents 存入文档"}
-    results = store.query(query, top_k=top_k)
+    child_results = store.query(
+        query, top_k=CHILD_TOP_K, where={"kind": "child"}
+    )
+    parent_ids = []
+    for item in child_results:
+        parent_id = item["metadata"].get("parent_id")
+        if parent_id and parent_id not in parent_ids:
+            parent_ids.append(parent_id)
+        if len(parent_ids) >= max(1, top_k):
+            break
+    parents = store.get_by_ids(parent_ids)
     return {
         "query": query,
         "results": [
             {
                 "content": item["document"],
                 "source": item["metadata"].get("source"),
-                "index": item["metadata"].get("index"),
+                "parent_id": item["id"],
+                "index": item["metadata"].get("parent_index"),
             }
-            for item in results
+            for item in parents
         ],
     }
+
+
 
 
 MEMORY_COLLECTION = "conversation_memory"
@@ -409,6 +464,13 @@ def run_python_script(script: str, timeout: int = 60) -> dict:
     超时时通过 taskkill 终止整个进程树（含脚本启动的子进程）；
     无论成功还是失败、超时，临时文件都会被删除。
     """
+    check = check_python_script(script)
+    if check["verdict"] != "allow":
+        return {
+            "error": "脚本未通过安全检查，已拒绝执行",
+            "reason": check["reason"],
+            "findings": check["findings"],
+        }
     fd, path = tempfile.mkstemp(prefix="vibechat_run_", suffix=".py")
     out_fd, out_path = tempfile.mkstemp(prefix="vibechat_out_", suffix=".txt")
     err_fd, err_path = tempfile.mkstemp(prefix="vibechat_err_", suffix=".txt")
@@ -481,7 +543,7 @@ TOOLS = [
         "name": "add_documents",
         "description": (
             "读取本地文件（Word/txt/PDF/Markdown/HTML/JSON/YAML/代码文件），"
-            "自动分块后存入向量数据库，供后续语义检索问答使用；"
+            "按父子文档分块后存入向量数据库（子文档检索、父文档回上下文），"
             "重复入库同一文件会追加新块"
         ),
         "parameters": {
@@ -496,7 +558,7 @@ TOOLS = [
     {
         "name": "query_documents",
         "description": (
-            "语义检索向量数据库，返回与问题最相关的文档片段及其来源，"
+            "先检索命中的子文档，再自动返回对应的父文档上下文及其来源，"
             "用于基于知识库的问答"
         ),
         "parameters": {
@@ -505,7 +567,7 @@ TOOLS = [
                 "query": {"type": "string", "description": "检索问题或关键词"},
                 "top_k": {
                     "type": "integer",
-                    "description": "返回片段数量，默认 5",
+                    "description": "返回父文档数量，默认 3",
                 },
             },
             "required": ["query"],
@@ -578,6 +640,8 @@ TOOLS = [
         "name": "run_python_script",
         "description": (
             "生成临时 Python 脚本并立即执行（使用当前 Python 解释器），执行结束后自动删除临时文件；"
+            "生成临时 Python 脚本并立即执行；执行前自动做静态安全检查，命中高危规则（shell 执行、动态执行、网络外联、敏感文件操作等）会拒绝执行；"
+            "使用当前 Python 解释器，执行结束后自动删除临时文件；"
             "超时会终止整个进程树（含脚本启动的子进程），不会残留后台进程；"
             "适用于批量文件处理、数据分析等需要运行自定义代码的场景；"
             "timeout 为执行超时秒数，默认 60 秒，失败/超时都会自动清理"
@@ -644,4 +708,3 @@ TOOLS = [
         "function": query_memory,
     },
 ]
-
