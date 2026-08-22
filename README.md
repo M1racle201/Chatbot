@@ -1,4 +1,4 @@
-# VibeChatbot
+## JobMatchAgent
 
 面向岗位搜索与推荐的 Agentic RAG 助手。用户可以用自然语言按岗位类型、城市、薪资、学历、工作经验和技能等条件检索职位，系统从岗位知识库中筛选匹配岗位，整理岗位职责、必须技能和加分技能，并基于原始 JD 证据生成推荐结果。
 
@@ -30,12 +30,15 @@ pip install -e .                 # 推荐：同时获得 vibechat 命令
 ## 运行
 
 ```bash
+终端运行:
+1.
 vibechat #(需要进行 'pip install -e.' 后才能使用)
-
-CLI python -m vibechatbot.cli）
-
+2.
+CLI : python -m vibechatbot.cli）
+3.
 Ink UI：cd ui && npm install && npm start
 
+以上任意方法选其一即可
 ## 核心特性
 
 - **任务路由**：读取/保存/写入/入库等简单工具任务直达工具；其余走 Agentic RAG 闭环。
