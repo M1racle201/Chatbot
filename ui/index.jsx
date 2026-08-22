@@ -8,6 +8,7 @@ import {isWideLayout} from './layout.mjs';
 import {
   Composer,
   Sidebar,
+  SettingsPanel,
   Transcript,
   WorkspaceHeader,
 } from './workbench.jsx';
@@ -94,6 +95,13 @@ const App = () => {
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [model, setModel] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
+  const [settingsDraft, setSettingsDraft] = useState({
+    base_url: '',
+    model: '',
+  });
   const bridgeRef = useRef(null);
   const keyRef = useRef(0);
 
@@ -165,7 +173,12 @@ const App = () => {
             break;
           }
           case 'error':
-            pushItem('error', event.message);
+            if (settingsOpen || settingsSaving) {
+              setSettingsSaving(false);
+              setSettingsError(event.message || '配置更新失败');
+            } else {
+              pushItem('error', event.message);
+            }
             setBusy(false);
             setStatus('');
             setStream('');
@@ -173,6 +186,25 @@ const App = () => {
           case 'ready':
             pushItem('notice', '后端已就绪，输入任务即可执行');
             setModel(event.model || '');
+            setSettingsDraft((current) => ({
+              ...current,
+              base_url: event.base_url || current.base_url,
+              model: event.model || current.model,
+            }));
+            break;
+          case 'settings_result':
+            setSettingsSaving(false);
+            if (event.ok) {
+              setSettingsOpen(false);
+              setSettingsError('');
+              if (event.model) {
+                setModel(event.model);
+                setSettingsDraft((current) => ({...current, model: event.model}));
+              }
+              pushItem('notice', event.content || '配置已生效');
+            } else {
+              setSettingsError(event.content || '配置更新失败');
+            }
             break;
           default:
             break;
@@ -196,6 +228,12 @@ const App = () => {
     const trimmed = value.trim();
     if (!trimmed) return;
 
+    if (trimmed === '/setting') {
+      setSettingsOpen(true);
+      setSettingsError('');
+      return;
+    }
+
     if (trimmed === '/exit') {
       bridgeRef.current?.send({type: 'exit'});
       bridgeRef.current?.close();
@@ -211,12 +249,18 @@ const App = () => {
       return;
     }
     if (trimmed.startsWith('/')) {
-      pushItem('notice', '可用命令: /clear_history /clear_memory /exit');
+      pushItem('notice', '可用命令: /setting /clear_history /clear_memory /exit');
       return;
     }
     setBusy(true);
     setStream('');
     bridgeRef.current?.send({type: 'task', content: trimmed});
+  };
+
+  const saveSettings = (settings) => {
+    setSettingsSaving(true);
+    setSettingsError('');
+    bridgeRef.current?.send({type: 'settings', settings});
   };
 
   // 用 React state 订阅终端尺寸变化，交给 Ink 的 log-update 清理旧帧。
@@ -238,15 +282,29 @@ const App = () => {
           columns={columns}
           wide={wide}
         />
-        <Composer
-          input={input}
-          setInput={setInput}
-          submit={submit}
-          label="Task"
-          busy={busy}
-          columns={columns}
-          maxHeight={Math.max(3, rows - 3)}
-        />
+        {settingsOpen ? (
+          <SettingsPanel
+            initial={settingsDraft}
+            onSave={saveSettings}
+            onCancel={() => {
+              setSettingsOpen(false);
+              setSettingsError('');
+            }}
+            error={settingsError}
+            busy={settingsSaving}
+            columns={columns}
+          />
+        ) : (
+          <Composer
+            input={input}
+            setInput={setInput}
+            submit={submit}
+            label="Task"
+            busy={busy}
+            columns={columns}
+            maxHeight={Math.max(3, rows - 3)}
+          />
+        )}
       </Box>
     </Box>
   );

@@ -15,17 +15,15 @@ import hashlib
 from vibechatbot import config
 from vibechatbot.security_guard import check_python_script
 from vibechatbot.vector_store import VectorStore
-from vibechatbot.chunking import (
+from vibechatbot.tools.chunking import (
     CHILD_TOP_K,
     MAX_PARENTS,
     split_parent_children,
+    split_parents,
 )
 
 # Word 文档的命名空间
 _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-
-# 分块切分符优先级：换行最优，其次感叹号，最后句号
-SEPARATORS = ("\n", "!", "！", ".", "。")
 
 # 向量库单例（首次使用时自动建库）
 _store = None
@@ -45,34 +43,6 @@ def get_store() -> "VectorStore":
 
         _store = VectorStore()
     return _store
-
-
-def split_text(text: str, max_chars: int = 500) -> list:
-    """将长文本分割为不超过 max_chars 字的块。
-
-    切分优先级：换行符 \n 最优，其次 !/！，再次 ./。
-    仅当窗口内找不到合适分隔符时才硬切。
-    """
-    text = text.strip()
-    if not text:
-        return []
-    if len(text) <= max_chars:
-        return [text]
-
-    window = text[:max_chars]
-    cut = -1
-    for separator in SEPARATORS:
-        position = window.rfind(separator)
-        # 分隔符位置太靠前时换下一优先级，避免切出过小的块
-        if position >= max_chars // 2:
-            cut = position
-            break
-    if cut == -1:
-        cut = max_chars
-    else:
-        cut += 1  # 保留分隔符本身
-
-    return [text[:cut].strip()] + split_text(text[cut:], max_chars)
 
 
 def _read_txt(path: str) -> str:
@@ -142,7 +112,7 @@ def load_file(path: str, chunk: bool = False) -> dict:
         return {"error": f"不支持的文件类型: {ext}（支持 txt / md / html / json / yaml / 常见代码文件 / docx / pdf）"}
     result = {"path": path, "content": content}
     if chunk:
-        result["chunks"] = split_text(content)
+        result["chunks"] = split_parents(content, max_chars=500)
     return result
 
 
@@ -639,12 +609,10 @@ TOOLS = [
     {
         "name": "run_python_script",
         "description": (
-            "生成临时 Python 脚本并立即执行（使用当前 Python 解释器），执行结束后自动删除临时文件；"
-            "生成临时 Python 脚本并立即执行；执行前自动做静态安全检查，命中高危规则（shell 执行、动态执行、网络外联、敏感文件操作等）会拒绝执行；"
-            "使用当前 Python 解释器，执行结束后自动删除临时文件；"
-            "超时会终止整个进程树（含脚本启动的子进程），不会残留后台进程；"
-            "适用于批量文件处理、数据分析等需要运行自定义代码的场景；"
-            "timeout 为执行超时秒数，默认 60 秒，失败/超时都会自动清理"
+            "生成临时 Python 脚本用当前解释器执行，结束后自动删除；执行前做静态安全检查，"
+            "命中高危规则（shell 执行、动态执行、网络外联、敏感文件操作等）拒绝执行；"
+            "超时终止整个进程树（含子进程），不残留后台进程；"
+            "适用于批量文件处理、数据分析等自定义代码场景；timeout 默认 60 秒"
         ),
         "parameters": {
             "type": "object",

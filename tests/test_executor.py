@@ -278,6 +278,25 @@ class TestExecutorAgent(unittest.TestCase):
         self.assertEqual(len(evidence[0]["content"]), 500)  # 截断到 500 字
         self.assertEqual(evidence[-1]["source"], "c.pdf")
 
+    def test_evidence_cleared_when_no_retrieval_tool_used(self):
+        """本轮未用检索/读取工具时,上一轮遗留的 evidence 应被清空,而非残留。"""
+        def fake_tool(name, arguments):
+            return json.dumps({"exit_code": 0, "stdout": "脚本搜索结果", "stderr": ""})
+
+        llm = SequentialLLM(
+            [
+                tool_call_response("run_python_script", '{"script": "..."}', "c1"),
+                FakeResponse(FakeMessage(content="结论")),
+            ]
+        )
+        agent = ExecutorAgent(llm=llm, tool_executor=fake_tool)
+        message = AgentMessage(
+            task="x",
+            context={"evidence": [{"source": "old.pdf", "content": "陈旧证据"}]},
+        )
+        asyncio.run(agent.run(message))
+        self.assertEqual(message.context["evidence"], [])
+
     def test_no_llm_and_no_chat_raises(self):
         with self.assertRaises(ValueError):
             ExecutorAgent()

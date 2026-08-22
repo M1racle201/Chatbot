@@ -55,12 +55,16 @@ class FakeStepRunTask:
         return {"route": "pipeline", "output": "done"}
 
 
-def run_bridge(commands, run_task=None):
+def run_bridge(commands, run_task=None, apply_settings=None):
     stdin = io.StringIO(
         "\n".join(json.dumps(c, ensure_ascii=False) for c in commands) + "\n"
     )
     stdout = io.StringIO()
-    bridge = Bridge(chat=FakeChat(), run_task=run_task or FakeRunTask())
+    bridge = Bridge(
+        chat=FakeChat(),
+        run_task=run_task or FakeRunTask(),
+        apply_settings=apply_settings,
+    )
     bridge.run(stdin=stdin, stdout=stdout)
     return [json.loads(line) for line in stdout.getvalue().strip().splitlines()]
 
@@ -68,7 +72,7 @@ def run_bridge(commands, run_task=None):
 class TestBridge(unittest.TestCase):
     def test_ready_on_start(self):
         events = run_bridge([])
-        self.assertEqual(events, [{"type": "ready", "model": ""}])
+        self.assertEqual(events, [{"type": "ready", "model": "", "base_url": ""}])
 
     def test_task_fast_path_emits_result(self):
         events = run_bridge([{"type": "task", "content": "保存文件"}])
@@ -111,7 +115,7 @@ class TestBridge(unittest.TestCase):
         bridge = Bridge(chat=FakeChat(), run_task=FakeRunTask())
         bridge.run(stdin=stdin, stdout=stdout)
         lines = [json.loads(line) for line in stdout.getvalue().strip().splitlines()]
-        self.assertEqual(lines[0], {"type": "ready", "model": ""})
+        self.assertEqual(lines[0], {"type": "ready", "model": "", "base_url": ""})
         errors = [e for e in lines if e["type"] == "error"]
         self.assertEqual(len(errors), 1)
         self.assertIn("无法解析命令", errors[0]["message"])
@@ -150,6 +154,55 @@ class TestBridge(unittest.TestCase):
         self.assertEqual(steps[0]["content"], "复写后任务: 检查文件")
         self.assertEqual(steps[1]["tool"], "load")
         self.assertEqual(steps[2]["tool"], "load")
+
+    def test_settings_command_emits_sanitized_success(self):
+        received = []
+
+        def apply_settings(settings):
+            received.append(settings)
+            return {"model": settings["model"]}
+
+        events = run_bridge(
+            [
+                {
+                    "type": "settings",
+                    "settings": {
+                        "base_url": "https://example.com/v1",
+                        "api_key": "secret-key",
+                        "model": "model-x",
+                    },
+                }
+            ],
+            apply_settings=apply_settings,
+        )
+        result = [e for e in events if e["type"] == "settings_result"][0]
+        self.assertEqual(result, {"type": "settings_result", "ok": True, "content": "配置已生效", "model": "model-x"})
+        self.assertEqual(received[0]["api_key"], "secret-key")
+        self.assertNotIn("secret-key", json.dumps(events, ensure_ascii=False))
+
+    def test_settings_command_emits_failure_without_secret(self):
+        def apply_settings(settings):
+            raise ValueError("API URL 无效")
+
+        events = run_bridge(
+            [
+                {
+                    "type": "settings",
+                    "settings": {
+                        "base_url": "bad-url",
+                        "api_key": "secret-key",
+                        "model": "model-x",
+                    },
+                }
+            ],
+            apply_settings=apply_settings,
+        )
+        result = [e for e in events if e["type"] == "settings_result"][0]
+        self.assertEqual(
+            result,
+            {"type": "settings_result", "ok": False, "content": "API URL 无效"},
+        )
+        self.assertNotIn("secret-key", json.dumps(events, ensure_ascii=False))
 
 
 if __name__ == "__main__":

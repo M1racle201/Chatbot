@@ -724,3 +724,82 @@ export function Composer({
     </Box>
   );
 }
+
+export function SettingsPanel({
+  initial = {},
+  onSave,
+  onCancel,
+  error = '',
+  busy = false,
+  columns = 80,
+}) {
+  const [baseUrl, setBaseUrl] = useState(initial.base_url || '');
+  const [apiKey, setApiKey] = useState('');
+  const [model, setModel] = useState(initial.model || '');
+  const [active, setActive] = useState(0);
+  const panelWidth = Math.max(30, Math.min(76, columns - 4));
+
+  useInput((_input, key) => {
+    if (busy) return;
+    if (key.escape) {
+      onCancel();
+      return;
+    }
+    if ((key.shift && key.tab) || key.upArrow) {
+      setActive((index) => (index + 2) % 3);
+      return;
+    }
+    if (key.tab || key.downArrow) {
+      setActive((index) => (index + 1) % 3);
+      return;
+    }
+    if (key.return && active === 2) {
+      onSave({base_url: baseUrl, api_key: apiKey, model});
+    } else if (key.return) {
+      setActive((index) => index + 1);
+    }
+  }, {isActive: true});
+
+  const field = (label, value, setValue, placeholder, mask) => (
+    <Box flexDirection="column" marginBottom={1}>
+      <Text color={COLOR.muted}>{label}</Text>
+      <Box
+        width={panelWidth}
+        paddingX={1}
+        borderStyle="single"
+        borderColor={COLOR.border}
+      >
+        <TextInput
+          value={value}
+          onChange={setValue}
+          focus={active === (label === 'API URL' ? 0 : label === 'API Key' ? 1 : 2) && !busy}
+          placeholder={placeholder}
+          mask={mask}
+        />
+      </Box>
+    </Box>
+  );
+
+  return (
+    <Box
+      width="100%"
+      flexDirection="column"
+      paddingX={2}
+      paddingY={1}
+      borderStyle="single"
+      borderColor={COLOR.amber}
+    >
+      <Text bold color={COLOR.amber}>API Settings</Text>
+      <Text color={COLOR.muted}>配置保存后立即生效；API Key 不会显示或写入日志。</Text>
+      <Box flexDirection="column" marginTop={1}>
+        {field('API URL', baseUrl, setBaseUrl, 'https://api.example.com/v1')}
+        {field('API Key', apiKey, setApiKey, '留空表示保持当前配置', '*')}
+        {field('Model', model, setModel, 'deepseek-chat')}
+      </Box>
+      {error ? <Text color={COLOR.error}>错误：{error}</Text> : null}
+      <Text color={COLOR.muted}>
+        {busy ? '正在应用配置...' : 'Tab/↑↓ 切换 · Enter 下一项/保存 · Esc 取消'}
+      </Text>
+    </Box>
+  );
+}

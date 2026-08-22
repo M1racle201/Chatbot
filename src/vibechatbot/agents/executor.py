@@ -291,9 +291,12 @@ class ExecutorAgent(BaseAgent):
                 evidence.append({"source": data.get("path"), "content": content})
 
     def _flush_evidence(self, message: AgentMessage, evidence: list) -> None:
-        """把收集到的依据片段写入共享上下文,供核查器对照。"""
-        if evidence:
-            message.context["evidence"] = evidence
+        """把收集到的依据片段写入共享上下文,供核查器对照。
+
+        无条件覆盖:即使本轮未采集到依据(如仅用了 run_python_script 等
+        非检索工具),也要清掉上一轮遗留的旧 evidence,避免核查器拿过期原文对照。
+        """
+        message.context["evidence"] = evidence
 
     def _snapshot(self, message_data: dict) -> str:
         """把一轮 LLM 回复压成可比对的快照:工具调用取 工具名+参数,否则取文本内容。"""

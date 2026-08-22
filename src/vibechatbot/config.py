@@ -4,6 +4,7 @@ import os
 import sys
 
 from dotenv import load_dotenv
+from vibechatbot.settings import load_settings
 
 # 包目录（.../src/vibechatbot）
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -43,6 +44,7 @@ AGENTIC_DIR = os.path.join(DATA_DIR, "AGENTIC")
 OUTPUT_DIR = os.path.join(DATA_DIR, "OUTPUT")
 VECTOR_DB_DIR = os.path.join(DATA_DIR, "VECTOR_DB")
 HISTORY_FILE = os.path.join(CHAT_DIR, "history.json")
+SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 
 # ---- 文件写入白名单（write_file 工具）----
 # VIBECHAT_WRITE_DIRS 用分号分隔多个目录；OUTPUT 目录始终允许
@@ -56,7 +58,8 @@ PROMPT_FILE = os.path.normpath(
     os.path.join(PROJECT_ROOT, os.getenv("PROMPT", "prompt/system"))
 )
 
-# ---- DeepSeek API ----
-DEEPSEEK_API = os.getenv("DEEPSEEK_API", "").strip()
-BASE_URL = os.getenv("BASE_URL", "https://api.deepseek.com").strip()
-MODEL_DEFAULT = os.getenv("MODEL_DEFAULT", os.getenv("MODLE_DEFAULT", "deepseek-chat")).strip()
+# ---- DeepSeek/API 兼容配置 ----
+_INITIAL_SETTINGS = load_settings(PROJECT_ROOT, data_dir=DATA_DIR)
+DEEPSEEK_API = _INITIAL_SETTINGS["api_key"]
+BASE_URL = _INITIAL_SETTINGS["base_url"]
+MODEL_DEFAULT = _INITIAL_SETTINGS["model"]

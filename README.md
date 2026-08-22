@@ -1,6 +1,8 @@
 # VibeChatbot
 
-DeepSeek 驱动的终端 Agentic RAG 助手。聊天/任务/Agent 三模式统一为「任务模式」：简单工具任务走快速通道，复杂任务自动进入 **复写器 → 执行器 → 核查器** 闭环。
+面向岗位搜索与推荐的 Agentic RAG 助手。用户可以用自然语言按岗位类型、城市、薪资、学历、工作经验和技能等条件检索职位，系统从岗位知识库中筛选匹配岗位，整理岗位职责、必须技能和加分技能，并基于原始 JD 证据生成推荐结果。
+
+项目将简单查询与文件操作走快速通道，复杂的岗位检索与推荐任务进入 **复写器 → 执行器 → 核查器** 闭环，减少岗位信息遗漏和无依据推荐。
 
 ## 安装
 
@@ -13,16 +15,17 @@ pip install -e .                 # 推荐：同时获得 vibechat 命令
 
 ## 配置
 
-复制 `.env.example` 为项目根 `.env`：
+运行中的 Ink UI 输入 `/setting` 打开配置面板，填写以下内容后按 Enter 保存：
 
-```bash
-DEEPSEEK_API=sk-your-key-here
-BASE_URL=https://api.deepseek.com
-MODEL_DEFAULT=deepseek-chat
-PROMPT=prompt/system
+- API URL，例如 `https://api.deepseek.com`
+- API Key，例如 `sk-your-key`
+- Model，例如 `deepseek-v4-flash`
+
+配置会保存到 `data/settings.json` 并立即热加载；API Key 在界面和事件日志中不会回显。API Key 留空表示保持当前配置，按 Esc 可取消设置。
+
+```text
+/setting
 ```
-
-> `.env` 须为无 BOM 的 UTF-8，程序自动从项目根加载。可选：`VIBECHAT_ROOT`（根目录覆盖）、`VIBECHAT_DATA_DIR`（数据根，默认 `data/`）、`HISTORY_FILE`。
 
 ## 运行
 

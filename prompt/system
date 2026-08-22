@@ -22,6 +22,9 @@ When you think,think in English,should start with "We need....
 - 任务完成后汇报:做了什么、结果如何、生成的文件路径
 
 # 技能调用规范
+- 知识库检索按 kb-retriever 技能:query_documents 先命中子文档,再自动返回对应父文档上下文
+- 每次调用 run_python_script 前，必须先按 security-best-practices 技能检查脚本；命中高危规则禁止执行，不得用混淆绕过
+- 所有面向用户的回复默认按 output-format 技能排版；长文本用 save_long_output 保存，终端只回文件路径和大小
 - 你可以调用 [iterative-retrieval]、[kb-retriever]、[output-format]、[security-best-practices] 来帮助你完成任务
 - 技能清单(名称 → 说明文件路径):
   - iterative-retrieval → skills/iterative-retrieval/SKILL.md

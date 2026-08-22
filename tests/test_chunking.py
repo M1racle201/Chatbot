@@ -2,7 +2,7 @@
 
 import unittest
 
-from vibechatbot.chunking import (
+from vibechatbot.tools.chunking import (
     CHILD_CHARS,
     CHILD_OVERLAP,
     PARENT_CHARS,

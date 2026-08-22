@@ -4,7 +4,9 @@
 - 命令（stdin）：{"type": "task", "content": "..."}
   兼容别名：{"type": "agent"} / {"type": "agentic"}（统一按 task 处理）
   {"type": "clear_history"} / {"type": "clear_memory"} / {"type": "exit"}
+- 运行时配置：{"type": "settings", "settings": {"base_url": "...", "api_key": "...", "model": "..."}}
 - 事件（stdout）：ready / user / stream / log / status / result / error / pong
+- 配置事件：settings_result（不会回传 API Key）
 - 事件（stdout）：ready / user / stream / step / log / status / result / error / pong
 
 依赖通过构造函数注入（chat/run_task），便于单元测试。
@@ -18,7 +20,9 @@ import json
 import sys
 
 from vibechatbot.runtime import build_runtime
+from vibechatbot.settings import load_settings, save_settings, validate_settings
 from vibechatbot.skill_sync import sync_skills_prompts
+from vibechatbot import config
 
 
 def _run_sync_or_async(fn, *args):
@@ -52,9 +56,10 @@ class _LineEmitter:
 class Bridge:
     """事件转发桥：stdin 收命令，stdout 发事件。"""
 
-    def __init__(self, chat=None, run_task=None):
+    def __init__(self, chat=None, run_task=None, apply_settings=None):
         self.chat = chat
         self.run_task = run_task or (lambda content: {"route": "fast", "output": ""})
+        self.apply_settings = apply_settings
         self._stdout = None
         self._streamed = False  # 当前任务是否发过流式文本（UI 据此避免结果重复显示）
 
@@ -90,7 +95,11 @@ class Bridge:
                 stream.reconfigure(encoding="utf-8")
             except (AttributeError, ValueError):
                 pass
-        self._emit(type="ready", model=getattr(self.chat, "model", ""))
+        self._emit(
+            type="ready",
+            model=getattr(self.chat, "model", ""),
+            base_url=getattr(self.chat, "base_url", ""),
+        )
         for raw in stdin:
             line = raw.strip()
             if not line:
@@ -108,6 +117,8 @@ class Bridge:
         kind = command.get("type")
         if kind in ("task", "agent", "agentic"):
             self._handle_task(command.get("content", ""))
+        elif kind == "settings":
+            self._handle_settings(command.get("settings", {}))
         elif kind == "clear_history":
             with self._event_stream():
                 self.chat.history.clear()
@@ -122,6 +133,36 @@ class Bridge:
         else:
             self._emit(type="error", message=f"未知命令类型: {kind}")
         return True
+
+    def _handle_settings(self, settings: dict) -> None:
+        """处理 UI 设置并返回不含 API Key 的结果事件。"""
+        if self.apply_settings is None:
+            self._emit(
+                type="settings_result",
+                ok=False,
+                content="当前后端不支持运行时配置",
+            )
+            return
+        api_key = str(settings.get("api_key", "")) if isinstance(settings, dict) else ""
+        try:
+            with self._event_stream():
+                result = _run_sync_or_async(self.apply_settings, settings)
+            result = result if isinstance(result, dict) else {}
+            self._emit(
+                type="settings_result",
+                ok=True,
+                content="配置已生效",
+                model=result.get("model", ""),
+            )
+        except Exception as exc:
+            message = str(exc) or "配置更新失败"
+            if api_key:
+                message = message.replace(api_key, "***")
+            self._emit(
+                type="settings_result",
+                ok=False,
+                content=message,
+            )
 
     # ---------- 统一任务处理 ----------
     def _handle_task(self, content: str) -> None:
@@ -149,8 +190,31 @@ class Bridge:
 def main():
     """组装真实后端并启动桥。"""
     sync_skills_prompts()
-    runtime = build_runtime()
-    bridge = Bridge(chat=runtime.chat, run_task=runtime.run_task)
+    initial_settings = load_settings(config.PROJECT_ROOT, data_dir=config.DATA_DIR)
+    runtime = build_runtime(settings=initial_settings)
+
+    def apply_runtime_settings(raw_settings):
+        raw_settings = dict(raw_settings or {})
+        if not raw_settings.get("api_key"):
+            raw_settings["api_key"] = runtime.settings.get("api_key", "")
+        settings = validate_settings(raw_settings)
+        previous = dict(runtime.settings)
+        try:
+            runtime.apply_settings(settings)
+            try:
+                save_settings(config.PROJECT_ROOT, settings, data_dir=config.DATA_DIR)
+            except Exception:
+                runtime.apply_settings(previous)
+                raise
+        except Exception as exc:
+            raise RuntimeError(f"配置未生效：{exc}") from exc
+        return {"model": settings["model"]}
+
+    bridge = Bridge(
+        chat=runtime.chat,
+        run_task=runtime.run_task,
+        apply_settings=apply_runtime_settings,
+    )
     bridge.run()
 
 

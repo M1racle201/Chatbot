@@ -5,6 +5,7 @@ import {Box, renderToString} from 'ink';
 import {isWideLayout} from './layout.mjs';
 import {
   Composer,
+  SettingsPanel,
   Sidebar,
   ToolHistory,
   Transcript,
@@ -270,4 +271,23 @@ test('composer grows vertically when input wraps to multiple lines', () => {
   assert.ok(lines.length <= 10);
   assert.match(frame, /很长/);
   assert.match(frame, /边框/);
+});
+
+test('settings panel renders URL, API key, and model fields', () => {
+  const frame = renderToString(
+    <SettingsPanel
+      initial={{base_url: 'https://example.com/v1', api_key: '', model: 'model-x'}}
+      onSave={() => {}}
+      onCancel={() => {}}
+      error=""
+    />,
+    {columns: 80, rows: 20},
+  );
+
+  assert.match(frame, /API Settings/);
+  assert.match(frame, /API URL/);
+  assert.match(frame, /API Key/);
+  assert.match(frame, /Model/);
+  assert.match(frame, /保存/);
+  assert.match(frame, /取消/);
 });

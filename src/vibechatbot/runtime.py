@@ -19,8 +19,30 @@ from vibechatbot.tools import file_tools
 from vibechatbot.agents import ExecutorAgent, Pipeline, RewriterAgent, VerifierAgent
 from vibechatbot.agents.pipeline import is_simple_tool_task
 from vibechatbot.chat import Chat
+from vibechatbot.settings import load_settings
 
 MAX_SESSION_ROUNDS = 5  # 注入给 agent 的最近任务轮数
+
+
+def _build_runtime_components(settings: dict):
+    """按一份配置创建 Chat 及其所有依赖，构造失败时不修改旧运行时。"""
+    chat_client = Chat(
+        api_key=settings["api_key"],
+        base_url=settings["base_url"],
+        model=settings["model"],
+    )
+    agent_client = Agent(chat_client, save_record=False)
+    agentic_verifier = VerifierAgent(chat=chat_client)
+    agentic_executor = ExecutorAgent(chat=chat_client)
+    agentic_pipeline = Pipeline(
+        [
+            RewriterAgent(chat=chat_client),
+            agentic_executor,
+            agentic_verifier,
+        ],
+        verifier=agentic_verifier,
+    )
+    return chat_client, agent_client, agentic_pipeline
 
 
 class Runtime:
@@ -33,6 +55,7 @@ class Runtime:
         pipeline,
         is_simple_tool_task,
         session_dir: str = None,
+        settings: dict = None,
     ):
         self.chat = chat
         file_tools.set_memory_summarizer(
@@ -42,9 +65,21 @@ class Runtime:
         self.pipeline = pipeline
         self.is_simple_tool_task = is_simple_tool_task
         self.session_dir = session_dir  # None 时按任务路由落到 TASK/AGENTIC 目录
+        self.settings = dict(settings or {})
         self.session_context = []  # 最近几轮 (task, output)，用于上下文注入
         self.session_records = []  # 本会话全部任务记录（写入存档）
         self.session_file = None  # 会话存档路径，首次任务时确定
+
+    def apply_settings(self, settings: dict) -> None:
+        """原子替换 Chat、Agent 和 Pipeline；构造失败时保留旧运行时。"""
+        chat, agent, pipeline = _build_runtime_components(settings)
+        self.chat = chat
+        self.agent = agent
+        self.pipeline = pipeline
+        self.settings = dict(settings)
+        file_tools.set_memory_summarizer(
+            getattr(chat, "_summarize_messages", None)
+        )
 
     def run_task(
         self, task: str, stream_callback=None, step_callback=None
@@ -134,24 +169,14 @@ class Runtime:
         return self.session_file
 
 
-def build_runtime() -> Runtime:
+def build_runtime(settings: dict = None) -> Runtime:
     """构建聊天客户端、快速通道 Agent 与 Agentic RAG 流水线单例。"""
-    chat_client = Chat()
-    agent_client = Agent(chat_client, save_record=False)
-    agentic_verifier = VerifierAgent(chat=chat_client)
-    agentic_executor = ExecutorAgent(chat=chat_client)
-    agentic_pipeline = Pipeline(
-        [
-            RewriterAgent(chat=chat_client),
-            agentic_executor,
-            agentic_verifier,
-        ],
-        verifier=agentic_verifier,
-        max_retries=3,
-    )
+    settings = dict(settings or load_settings(config.PROJECT_ROOT, data_dir=config.DATA_DIR))
+    chat_client, agent_client, agentic_pipeline = _build_runtime_components(settings)
     return Runtime(
         chat=chat_client,
         agent=agent_client,
         pipeline=agentic_pipeline,
         is_simple_tool_task=is_simple_tool_task,
+        settings=settings,
     )

@@ -19,6 +19,7 @@ class TestInkUiLayout(unittest.TestCase):
             "function ResultPanel(",
             "function Transcript(",
             "function Composer(",
+            "function SettingsPanel(",
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, WORKBENCH_SOURCE)
@@ -68,6 +69,12 @@ class TestInkUiLayout(unittest.TestCase):
                 self.assertIn(command, APP_SOURCE)
         self.assertIn("type: 'task'", APP_SOURCE)
         self.assertNotIn("/chat", APP_SOURCE)
+
+    def test_settings_command_uses_settings_protocol(self):
+        self.assertIn("/setting", APP_SOURCE)
+        self.assertIn("type: 'settings'", APP_SOURCE)
+        self.assertIn("settings_result", APP_SOURCE)
+        self.assertIn("mask=", WORKBENCH_SOURCE)
 
 
 if __name__ == "__main__":

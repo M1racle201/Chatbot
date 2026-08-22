@@ -20,14 +20,6 @@ __pycache__/
 .venv/
 .worktrees/
 
-# 系统提示词(本地内容,不提交)
-prompt/*
-!prompt/system
-!prompt/rewriter
-!prompt/executor
-!prompt/verifier
-
-
 # Node / Ink UI
 ui/node_modules/
 ui/.build/

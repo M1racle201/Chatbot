@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from vibechatbot.agents.base import AgentMessage
 from vibechatbot.runtime import Runtime
@@ -132,6 +133,48 @@ class TestRuntime(unittest.TestCase):
         steps = []
         runtime.run_task("保存文件", step_callback=lambda s, c: steps.append((s, c)))
         self.assertEqual(steps, [("fast", "快速通道：直接执行工具任务")])
+
+    def test_apply_settings_rebuilds_chat_and_agents(self):
+        runtime = self._make_runtime(simple_route=False)
+        new_chat = FakeChat()
+        new_agent = FakeAgent()
+        new_pipeline = FakePipeline()
+        settings = {
+            "base_url": "https://example.com/v1",
+            "api_key": "new-secret",
+            "model": "new-model",
+        }
+        with patch(
+            "vibechatbot.runtime._build_runtime_components",
+            return_value=(new_chat, new_agent, new_pipeline),
+        ) as builder:
+            runtime.apply_settings(settings)
+        builder.assert_called_once_with(settings)
+        self.assertIs(runtime.chat, new_chat)
+        self.assertIs(runtime.agent, new_agent)
+        self.assertIs(runtime.pipeline, new_pipeline)
+        self.assertEqual(runtime.settings, settings)
+
+    def test_apply_settings_failure_keeps_old_runtime(self):
+        runtime = self._make_runtime(simple_route=False)
+        old_chat = runtime.chat
+        old_agent = runtime.agent
+        old_pipeline = runtime.pipeline
+        with patch(
+            "vibechatbot.runtime._build_runtime_components",
+            side_effect=RuntimeError("初始化失败"),
+        ):
+            with self.assertRaises(RuntimeError):
+                runtime.apply_settings(
+                    {
+                        "base_url": "https://example.com",
+                        "api_key": "secret",
+                        "model": "model",
+                    }
+                )
+        self.assertIs(runtime.chat, old_chat)
+        self.assertIs(runtime.agent, old_agent)
+        self.assertIs(runtime.pipeline, old_pipeline)
 
 
 if __name__ == "__main__":
