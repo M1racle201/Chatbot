@@ -7,7 +7,7 @@
 import ast
 import os
 
-from vibechatbot import config
+from jobmatchagent import config
 
 
 _BLOCK_CALLS = {

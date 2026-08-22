@@ -4,8 +4,8 @@ import asyncio
 import json
 import unittest
 
-from vibechatbot.agents.base import AgentMessage
-from vibechatbot.agents.executor import ExecutorAgent, _tool_result_step_text
+from jobmatchagent.agents.base import AgentMessage
+from jobmatchagent.agents.executor import ExecutorAgent, _tool_result_step_text
 
 
 class FakeMessage:

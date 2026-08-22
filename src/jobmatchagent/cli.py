@@ -1,8 +1,8 @@
-"""VibeChatbot 入口：统一任务模式（自动路由快速通道 / 复写→执行→核查）。"""
+"""JobMatchAgent 入口：统一任务模式（自动路由快速通道 / 复写→执行→核查）。"""
 
-from vibechatbot import config
-from vibechatbot.runtime import build_runtime
-from vibechatbot.skill_sync import sync_skills_prompts
+from jobmatchagent import config
+from jobmatchagent.runtime import build_runtime
+from jobmatchagent.skill_sync import sync_skills_prompts
 
 sync_skills_prompts()
 runtime = build_runtime()

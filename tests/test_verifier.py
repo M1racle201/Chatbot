@@ -4,8 +4,8 @@ import asyncio
 import os
 import unittest
 
-from vibechatbot.agents.base import AgentMessage
-from vibechatbot.agents.verifier import VerifierAgent
+from jobmatchagent.agents.base import AgentMessage
+from jobmatchagent.agents.verifier import VerifierAgent
 
 
 PROMPT_FILE = os.path.join(

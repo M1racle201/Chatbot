@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from vibechatbot.settings import (
+from jobmatchagent.settings import (
     DEFAULT_SETTINGS,
     load_settings,
     save_settings,

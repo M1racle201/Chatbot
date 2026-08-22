@@ -8,8 +8,8 @@ import json
 import os
 from datetime import datetime
 
-from vibechatbot import config
-from vibechatbot.agents.base import AgentMessage, BaseAgent
+from jobmatchagent import config
+from jobmatchagent.agents.base import AgentMessage, BaseAgent
 
 
 class Pipeline:

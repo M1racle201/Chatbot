@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from vibechatbot.skill_sync import sync_skills_prompts  # noqa: E402
+from jobmatchagent.skill_sync import sync_skills_prompts  # noqa: E402
 
 
 def main() -> None:

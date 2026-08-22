@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from types import SimpleNamespace
 
-from vibechatbot.chat import Chat
-from vibechatbot.history import History
+from jobmatchagent.chat import Chat
+from jobmatchagent.history import History
 
 
 def _server_error():

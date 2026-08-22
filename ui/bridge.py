@@ -1,4 +1,4 @@
-"""Ink 前端拉起的 Python 后端入口（薄壳，逻辑在 vibechatbot.bridge）。"""
+"""Ink 前端拉起的 Python 后端入口（薄壳，逻辑在 jobmatchagent.bridge）。"""
 
 import os
 import sys
@@ -10,10 +10,10 @@ if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
 try:
-    from vibechatbot.bridge import main
+    from jobmatchagent.bridge import main
 except ImportError:
     print(
-        "无法加载 vibechatbot，请确认项目 src 目录存在或先运行: pip install -e .",
+        "无法加载 jobmatchagent，请确认项目 src 目录存在或先运行: pip install -e .",
         file=sys.stderr,
     )
     sys.exit(1)

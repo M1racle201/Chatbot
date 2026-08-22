@@ -11,8 +11,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from vibechatbot.tools.file_tools import add_documents
-from vibechatbot.vector_store import VectorStore
+from jobmatchagent.tools.file_tools import add_documents
+from jobmatchagent.vector_store import VectorStore
 
 SUPPORTED_SUFFIXES = {
     ".txt", ".md", ".markdown", ".html", ".htm",

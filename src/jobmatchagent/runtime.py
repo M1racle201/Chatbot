@@ -13,13 +13,13 @@ import json
 import os
 from datetime import datetime
 
-from vibechatbot import config
-from vibechatbot.agent import Agent
-from vibechatbot.tools import file_tools
-from vibechatbot.agents import ExecutorAgent, Pipeline, RewriterAgent, VerifierAgent
-from vibechatbot.agents.pipeline import is_simple_tool_task
-from vibechatbot.chat import Chat
-from vibechatbot.settings import load_settings
+from jobmatchagent import config
+from jobmatchagent.agent import Agent
+from jobmatchagent.tools import file_tools
+from jobmatchagent.agents import ExecutorAgent, Pipeline, RewriterAgent, VerifierAgent
+from jobmatchagent.agents.pipeline import is_simple_tool_task
+from jobmatchagent.chat import Chat
+from jobmatchagent.settings import load_settings
 
 MAX_SESSION_ROUNDS = 5  # 注入给 agent 的最近任务轮数
 

@@ -8,7 +8,7 @@ import numpy as np
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from sklearn.feature_extraction.text import HashingVectorizer
 
-from vibechatbot import config
+from jobmatchagent import config
 
 DB_DIR = config.VECTOR_DB_DIR
 COLLECTION_NAME = "documents"
@@ -184,3 +184,15 @@ class VectorStore:
         ids = self.collection.get()["ids"]
         if ids:
             self.collection.delete(ids=ids)
+
+    def close(self) -> None:
+        """释放 Chroma 客户端，避免 Windows 清理目录时出现文件锁。"""
+        close = getattr(self.client, "close", None)
+        if callable(close):
+            close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()

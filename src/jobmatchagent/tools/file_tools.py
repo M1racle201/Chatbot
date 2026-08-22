@@ -12,10 +12,10 @@ import tempfile
 from datetime import datetime
 
 import hashlib
-from vibechatbot import config
-from vibechatbot.security_guard import check_python_script
-from vibechatbot.vector_store import VectorStore
-from vibechatbot.tools.chunking import (
+from jobmatchagent import config
+from jobmatchagent.security_guard import check_python_script
+from jobmatchagent.vector_store import VectorStore
+from jobmatchagent.tools.chunking import (
     CHILD_TOP_K,
     MAX_PARENTS,
     split_parent_children,
@@ -39,7 +39,7 @@ def get_store() -> "VectorStore":
     """获取向量库实例（惰性创建）。"""
     global _store
     if _store is None:
-        from vibechatbot.vector_store import VectorStore
+        from jobmatchagent.vector_store import VectorStore
 
         _store = VectorStore()
     return _store
@@ -212,7 +212,7 @@ def set_memory_summarizer(summarizer):
 
 
 def _memory_store() -> "VectorStore":
-    from vibechatbot.vector_store import VectorStore
+    from jobmatchagent.vector_store import VectorStore
 
     return VectorStore(collection_name=MEMORY_COLLECTION)
 
@@ -285,27 +285,27 @@ def remember_conversation(
         brief_assistant = _rough_summarize(assistant_content)
 
     memory_text = f"用户: {user_content}\n助手: {brief_assistant}"
-    store = _memory_store()
-    created = datetime.now().isoformat(timespec="seconds")
-    ids = store.add_texts(
-        [memory_text],
-        metadatas=[
-            {
-                "type": "conversation_memory",
-                "topic": topic.strip(),
-                "source": "conversation",
-                "created_at": created,
-                "user_chars": len(user_content),
-                "assistant_chars": len(assistant_content),
-            }
-        ],
-    )
-    return {
-        "memory_ids": ids,
-        "chunks": 1,
-        "topic": topic.strip(),
-        "created_at": created,
-    }
+    with _memory_store() as store:
+        created = datetime.now().isoformat(timespec="seconds")
+        ids = store.add_texts(
+            [memory_text],
+            metadatas=[
+                {
+                    "type": "conversation_memory",
+                    "topic": topic.strip(),
+                    "source": "conversation",
+                    "created_at": created,
+                    "user_chars": len(user_content),
+                    "assistant_chars": len(assistant_content),
+                }
+            ],
+        )
+        return {
+            "memory_ids": ids,
+            "chunks": 1,
+            "topic": topic.strip(),
+            "created_at": created,
+        }
 
 
 def query_memory(query: str, top_k: int = 3) -> dict:
@@ -314,23 +314,23 @@ def query_memory(query: str, top_k: int = 3) -> dict:
     if not query:
         return {"error": "检索内容不能为空"}
 
-    store = _memory_store()
-    if store.count() == 0:
-        return {"error": "对话记忆为空，还没有可检索的历史摘要"}
+    with _memory_store() as store:
+        if store.count() == 0:
+            return {"error": "对话记忆为空，还没有可检索的历史摘要"}
 
-    results = store.query(query, top_k=max(1, min(top_k, 10)))
-    return {
-        "query": query,
-        "results": [
-            {
-                "document": item["document"],
-                "source": item["metadata"].get("source"),
-                "topic": item["metadata"].get("topic"),
-                "created_at": item["metadata"].get("created_at"),
-            }
-            for item in results
-        ],
-    }
+        results = store.query(query, top_k=max(1, min(top_k, 10)))
+        return {
+            "query": query,
+            "results": [
+                {
+                    "document": item["document"],
+                    "source": item["metadata"].get("source"),
+                    "topic": item["metadata"].get("topic"),
+                    "created_at": item["metadata"].get("created_at"),
+                }
+                for item in results
+            ],
+        }
 
 
 def save_file(filename: str, content: str) -> dict:
@@ -441,9 +441,9 @@ def run_python_script(script: str, timeout: int = 60) -> dict:
             "reason": check["reason"],
             "findings": check["findings"],
         }
-    fd, path = tempfile.mkstemp(prefix="vibechat_run_", suffix=".py")
-    out_fd, out_path = tempfile.mkstemp(prefix="vibechat_out_", suffix=".txt")
-    err_fd, err_path = tempfile.mkstemp(prefix="vibechat_err_", suffix=".txt")
+    fd, path = tempfile.mkstemp(prefix="jobmatchagent_run_", suffix=".py")
+    out_fd, out_path = tempfile.mkstemp(prefix="jobmatchagent_out_", suffix=".txt")
+    err_fd, err_path = tempfile.mkstemp(prefix="jobmatchagent_err_", suffix=".txt")
     os.close(out_fd)
     os.close(err_fd)
     timed_out = False

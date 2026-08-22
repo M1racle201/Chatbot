@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from vibechatbot.tools import file_tools
+from jobmatchagent.tools import file_tools
 
 
 class FakeStore:

@@ -1,10 +1,10 @@
-"""src/vibechatbot/bridge.py stdio 协议单元测试（注入 fake 后端，不联网）。"""
+"""src/jobmatchagent/bridge.py stdio 协议单元测试（注入 fake 后端，不联网）。"""
 
 import io
 import json
 import unittest
 
-from vibechatbot.bridge import Bridge
+from jobmatchagent.bridge import Bridge
 
 
 class FakeHistory:

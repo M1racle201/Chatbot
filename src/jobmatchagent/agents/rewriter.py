@@ -8,8 +8,8 @@ llm 为可调用对象:接收 messages 列表,返回回复文本。
 import inspect
 import os
 
-from vibechatbot import config
-from vibechatbot.agents.base import AgentMessage, BaseAgent
+from jobmatchagent import config
+from jobmatchagent.agents.base import AgentMessage, BaseAgent
 
 DEFAULT_REWRITE_PROMPT_FILE = os.path.join(config.PROMPT_DIR, "rewriter")
 

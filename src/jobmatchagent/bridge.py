@@ -19,10 +19,10 @@ import inspect
 import json
 import sys
 
-from vibechatbot.runtime import build_runtime
-from vibechatbot.settings import load_settings, save_settings, validate_settings
-from vibechatbot.skill_sync import sync_skills_prompts
-from vibechatbot import config
+from jobmatchagent.runtime import build_runtime
+from jobmatchagent.settings import load_settings, save_settings, validate_settings
+from jobmatchagent.skill_sync import sync_skills_prompts
+from jobmatchagent import config
 
 
 def _run_sync_or_async(fn, *args):

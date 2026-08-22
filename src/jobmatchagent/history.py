@@ -3,7 +3,7 @@
 import json
 import os
 
-from vibechatbot.config import HISTORY_FILE
+from jobmatchagent.config import HISTORY_FILE
 
 
 class History:

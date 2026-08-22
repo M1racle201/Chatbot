@@ -16,8 +16,8 @@ import inspect
 import json
 import os
 
-from vibechatbot import config
-from vibechatbot.agents.base import AgentMessage, BaseAgent
+from jobmatchagent import config
+from jobmatchagent.agents.base import AgentMessage, BaseAgent
 
 MAX_EXECUTOR_STEPS = 10
 MAX_TOOL_RESULT_STEP_CHARS = 1600  # UI 思考链中单个工具结果最多展示的字符数
@@ -102,13 +102,13 @@ def _tool_result_step_text(result: str, limit: int = MAX_TOOL_RESULT_STEP_CHARS)
 
 def _default_tools():
     """加载工具定义(真实运行时;避免测试环境依赖 chromadb)。"""
-    from vibechatbot.tools import TOOL_DEFINITIONS
+    from jobmatchagent.tools import TOOL_DEFINITIONS
 
     return TOOL_DEFINITIONS
 
 
 def _default_tool_executor():
-    from vibechatbot.tools import execute_tool
+    from jobmatchagent.tools import execute_tool
 
     return execute_tool
 

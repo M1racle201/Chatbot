@@ -9,8 +9,8 @@ from openai import (
     RateLimitError,
 )
 
-from vibechatbot.config import BASE_URL, DEEPSEEK_API, HISTORY_FILE, MODEL_DEFAULT, PROMPT_FILE
-from vibechatbot.history import History
+from jobmatchagent.config import BASE_URL, DEEPSEEK_API, HISTORY_FILE, MODEL_DEFAULT, PROMPT_FILE
+from jobmatchagent.history import History
 
 MAX_ROUNDS = 60
 KEEP_RECENT_ROUNDS = 20

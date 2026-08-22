@@ -79,7 +79,7 @@ export function Sidebar({items}) {
       borderColor={COLOR.border}
     >
       <Box height={3} alignItems="center">
-        <Text bold color={COLOR.amber}>VibeChatbot⌄</Text>
+        <Text bold color={COLOR.amber}>JobMatchAgent⌄</Text>
       </Box>
 
       <Box flexDirection="column" marginTop={1} gap={1}>
@@ -114,8 +114,8 @@ export function Sidebar({items}) {
 
 export function WorkspaceHeader({label = 'Task', busy, compact, model = ''}) {
   const context = compact
-    ? `VibeChatbot · ${label}`
-    : `Context: VibeChatbot · ${label}`;
+    ? `JobMatchAgent · ${label}`
+    : `Context: JobMatchAgent · ${label}`;
 
   return (
     <Box

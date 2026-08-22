@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from vibechatbot.skill_sync import (
+from jobmatchagent.skill_sync import (
     build_skill_section,
     discover_skills,
     replace_skill_section,

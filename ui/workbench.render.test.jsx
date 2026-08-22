@@ -16,7 +16,7 @@ import {
 const ITEMS = [
   {key: 1, kind: 'user', text: 'Add streaming support to the chat endpoint.'},
   {key: 2, kind: 'assistant', text: 'I will inspect the endpoint and update it.'},
-  {key: 3, kind: 'log', text: 'Inspecting src/vibechatbot/chat.py'},
+  {key: 3, kind: 'log', text: 'Inspecting src/jobmatchagent/chat.py'},
   {key: 4, kind: 'result', text: 'Streaming path verified.'},
 ];
 
@@ -44,9 +44,9 @@ function Preview({columns}) {
 test('wide render contains the approved workbench regions', () => {
   const frame = renderToString(<Preview columns={140} />, {columns: 140, rows: 40});
 
-  assert.match(frame, /VibeChatbot/);
+  assert.match(frame, /JobMatchAgent/);
   assert.match(frame, /Recent threads/);
-  assert.match(frame, /Context: VibeChatbot/);
+  assert.match(frame, /Context: JobMatchAgent/);
   assert.match(frame, /You/);
   assert.match(frame, /Agent/);
   assert.match(frame, /Tool/);
@@ -60,7 +60,7 @@ test('compact render hides the sidebar but keeps project context', () => {
   const frame = renderToString(<Preview columns={80} />, {columns: 80, rows: 24});
 
   assert.doesNotMatch(frame, /Recent threads/);
-  assert.match(frame, /VibeChatbot · Task/);
+  assert.match(frame, /JobMatchAgent · Task/);
   assert.match(frame, /Agent ready/);
   assert.match(frame, /Ask the agent to inspect, build, or explain/);
   assert.ok(frame.split('\n').length <= 24);

@@ -4,9 +4,9 @@ import os
 import sys
 
 from dotenv import load_dotenv
-from vibechatbot.settings import load_settings
+from jobmatchagent.settings import load_settings
 
-# 包目录（.../src/vibechatbot）
+# 包目录（.../src/jobmatchagent）
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 

@@ -7,8 +7,8 @@ import glob
 import time
 from unittest.mock import patch
 
-from vibechatbot import config
-from vibechatbot.tools import file_tools
+from jobmatchagent import config
+from jobmatchagent.tools import file_tools
 
 
 class TestWriteFile(unittest.TestCase):
@@ -152,7 +152,7 @@ class TestRunPythonScript(unittest.TestCase):
 
     def test_run_kills_nested_subprocess_on_timeout(self):
         """超时应终止整棵进程树：孙进程不能被放过，也不能阻塞等待其退出。"""
-        done_file = os.path.join(tempfile.gettempdir(), "vibechat_nested_done.txt")
+        done_file = os.path.join(tempfile.gettempdir(), "jobmatchagent_nested_done.txt")
         if os.path.exists(done_file):
             os.remove(done_file)
         self.addCleanup(lambda: os.path.exists(done_file) and os.remove(done_file))
@@ -180,7 +180,7 @@ class TestRunPythonScript(unittest.TestCase):
 
     def test_run_cleans_up_temp_file(self):
 
-        pattern = os.path.join(tempfile.gettempdir(), "vibechat_run_*.py")
+        pattern = os.path.join(tempfile.gettempdir(), "jobmatchagent_run_*.py")
         before = set(glob.glob(pattern))
         file_tools.run_python_script("pass")
         after = set(glob.glob(pattern))

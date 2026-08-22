@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from vibechatbot.agents.base import AgentMessage
-from vibechatbot.runtime import Runtime
+from jobmatchagent.agents.base import AgentMessage
+from jobmatchagent.runtime import Runtime
 
 
 class FakeChat:
@@ -145,7 +145,7 @@ class TestRuntime(unittest.TestCase):
             "model": "new-model",
         }
         with patch(
-            "vibechatbot.runtime._build_runtime_components",
+            "jobmatchagent.runtime._build_runtime_components",
             return_value=(new_chat, new_agent, new_pipeline),
         ) as builder:
             runtime.apply_settings(settings)
@@ -161,7 +161,7 @@ class TestRuntime(unittest.TestCase):
         old_agent = runtime.agent
         old_pipeline = runtime.pipeline
         with patch(
-            "vibechatbot.runtime._build_runtime_components",
+            "jobmatchagent.runtime._build_runtime_components",
             side_effect=RuntimeError("初始化失败"),
         ):
             with self.assertRaises(RuntimeError):

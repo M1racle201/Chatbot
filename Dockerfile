@@ -1,10 +1,10 @@
-# ================= VibeChatbot 容器镜像 =================
+# ================= JobMatchAgent 容器镜像 =================
 # 构建:
-#   docker build -t vibechatbot .
+#   docker build -t jobmatchagent .
 #
-# 运行终端聊天 (交互式): 数据统一持久化在 vibe_data 卷,`--rm` 也不会丢数据
-#   docker run -it --rm --env-file .env -v vibe_data:/app/data \
-#     -v vibe_model:/app/.hf_cache vibechatbot
+# 运行终端聊天 (交互式): 数据统一持久化在 jobmatchagent_data 卷,`--rm` 也不会丢数据
+#   docker run -it --rm --env-file .env -v jobmatchagent_data:/app/data \
+#     -v jobmatchagent_model:/app/.hf_cache jobmatchagent
 #
 # 数据卷: 聊天记录 / 任务记录 / 流水线 / 输出 / 向量库 统一挂到 /app/data 下
 # ========================================================
@@ -13,7 +13,7 @@
 FROM python:3.12-slim
 
 # PYTHONUNBUFFERED: 日志实时输出; HF_HOME: 嵌入模型缓存目录(挂载卷持久化)
-# PYTHONPATH: src-layout 包位置,`python -m vibechatbot.cli` 无需安装即可运行
+# PYTHONPATH: src-layout 包位置,`python -m jobmatchagent.cli` 无需安装即可运行
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONPATH=/app/src \
@@ -38,4 +38,4 @@ COPY . .
 VOLUME ["/app/data", "/app/.hf_cache"]
 
 # 默认启动终端聊天 CLI;`docker run -it` 交互使用
-CMD ["python", "-m", "vibechatbot.cli"]
+CMD ["python", "-m", "jobmatchagent.cli"]

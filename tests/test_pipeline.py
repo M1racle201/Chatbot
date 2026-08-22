@@ -6,8 +6,8 @@ import os
 import tempfile
 import unittest
 
-from vibechatbot.agents.base import AgentMessage, BaseAgent
-from vibechatbot.agents.pipeline import Pipeline, is_simple_tool_task
+from jobmatchagent.agents.base import AgentMessage, BaseAgent
+from jobmatchagent.agents.pipeline import Pipeline, is_simple_tool_task
 
 
 class EchoAgent(BaseAgent):

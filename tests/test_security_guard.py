@@ -2,8 +2,8 @@
 
 import unittest
 
-from vibechatbot.security_guard import check_python_script
-from vibechatbot.tools import file_tools
+from jobmatchagent.security_guard import check_python_script
+from jobmatchagent.tools import file_tools
 
 
 class TestCheckPythonScript(unittest.TestCase):

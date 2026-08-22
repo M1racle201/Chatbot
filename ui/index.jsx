@@ -19,7 +19,7 @@ const exeDir = path.dirname(process.execPath);
 const backendExe =
   [
     process.env.VIBECHAT_BRIDGE_EXE,
-    path.join(exeDir, 'vibechatbot-backend.exe'),
+    path.join(exeDir, 'jobmatchagent-backend.exe'),
     path.join(exeDir, 'backend.exe'),
   ].find((candidate) => candidate && existsSync(candidate)) || '';
 const bridgePath =

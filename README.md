@@ -1,4 +1,4 @@
-## JobMatchAgent
+# JobMatchAgent
 
 面向岗位搜索与推荐的 Agentic RAG 助手。用户可以用自然语言按岗位类型、城市、薪资、学历、工作经验和技能等条件检索职位，系统从岗位知识库中筛选匹配岗位，整理岗位职责、必须技能和加分技能，并基于原始 JD 证据生成推荐结果。
 
@@ -9,7 +9,7 @@
 要求 Python >= 3.10。
 
 ```bash
-pip install -e .                 # 推荐：同时获得 vibechat 命令
+pip install -e .                 # 推荐：同时获得 jobmatchagent 命令
 # 或 pip install -r requirements.txt
 ```
 
@@ -32,9 +32,9 @@ pip install -e .                 # 推荐：同时获得 vibechat 命令
 ```bash
 终端运行:
 1.
-vibechat #(需要进行 'pip install -e.' 后才能使用)
+jobmatchagent #(需要进行 'pip install -e.' 后才能使用)
 2.
-CLI : python -m vibechatbot.cli）
+CLI : python -m jobmatchagent.cli）
 3.
 Ink UI：cd ui && npm install && npm start
 
@@ -68,8 +68,8 @@ cd ui; npm run build; npm test                                       # UI
 ## 目录结构
 
 ```
-VibeChatbot/
-├── src/vibechatbot/      # config / cli / chat / runtime / vector_store / agent / bridge
+JobMatchAgent/
+├── src/jobmatchagent/    # config / cli / chat / runtime / vector_store / agent / bridge
 │   ├── agents/           # rewriter → executor → verifier 闭环
 │   └── tools/            # file_tools + 注册表
 ├── prompt/               # system / rewriter / executor / verifier 提示词

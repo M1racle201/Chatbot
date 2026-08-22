@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "vibechatbot"
+name = "jobmatchagent"
 version = "0.2.0"
-description = "DeepSeek 驱动的终端聊天 + Agentic RAG 助手"
+description = "面向岗位搜索与推荐的 Agentic RAG 助手"
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=2.0.0",
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-vibechat = "vibechatbot.cli:main"
+jobmatchagent = "jobmatchagent.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

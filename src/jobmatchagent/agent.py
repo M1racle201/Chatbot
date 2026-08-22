@@ -4,8 +4,8 @@ import json
 import os
 from datetime import datetime
 
-from vibechatbot import config
-from vibechatbot.tools import TOOL_DEFINITIONS, execute_tool
+from jobmatchagent import config
+from jobmatchagent.tools import TOOL_DEFINITIONS, execute_tool
 
 MAX_AGENT_STEPS = 10
 TASK_DIR = config.TASK_DIR

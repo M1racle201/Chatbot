@@ -6,7 +6,7 @@
 
 import json
 
-from vibechatbot.tools.file_tools import TOOLS as BASIC_TOOLS
+from jobmatchagent.tools.file_tools import TOOLS as BASIC_TOOLS
 
 # 全部工具定义（含执行函数）
 _ALL_TOOLS = BASIC_TOOLS

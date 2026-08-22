@@ -26,7 +26,7 @@ class TestInkUiLayout(unittest.TestCase):
 
     def test_visual_copy_matches_the_approved_workbench(self):
         for copy in (
-            "VibeChatbot",
+            "JobMatchAgent",
             "Threads",
             "Files",
             "Tasks",

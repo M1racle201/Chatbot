@@ -1,9 +1,9 @@
 {
-  "name": "vibechatbot-ui",
+  "name": "jobmatchagent-ui",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "VibeChatbot Ink 终端 UI",
+  "description": "JobMatchAgent Ink 终端 UI",
   "scripts": {
     "build": "esbuild index.jsx --bundle --platform=node --format=esm --alias:react-devtools-core=./devtools-stub.js --banner:js=\"import {createRequire} from 'module';const require=createRequire(import.meta.url);\" --log-level=error --outfile=.build/index.mjs",
     "test:layout": "node --test layout.test.mjs",

@@ -5,9 +5,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from vibechatbot import vector_store
-from vibechatbot.tools import TOOL_DEFINITIONS, execute_tool
-from vibechatbot.tools.file_tools import (
+from jobmatchagent import vector_store
+from jobmatchagent.tools import TOOL_DEFINITIONS, execute_tool
+from jobmatchagent.tools.file_tools import (
     query_memory,
     remember_conversation,
     set_memory_summarizer,

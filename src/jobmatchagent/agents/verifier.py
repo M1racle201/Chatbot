@@ -9,8 +9,8 @@ import json
 import os
 import re
 
-from vibechatbot import config
-from vibechatbot.agents.base import AgentMessage, BaseAgent
+from jobmatchagent import config
+from jobmatchagent.agents.base import AgentMessage, BaseAgent
 
 DEFAULT_VERIFIER_PROMPT_FILE = os.path.join(config.PROMPT_DIR, "verifier")
 
