@@ -9,6 +9,8 @@
 要求 Python >= 3.10。
 
 ```bash
+git clone https://github.com/M1racle201/Chatbot.git
+cd Chatbot
 pip install -e .                 # 推荐：同时获得 jobmatchagent 命令
 # 或 pip install -r requirements.txt
 ```
